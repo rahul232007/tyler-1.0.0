@@ -1,16 +1,14 @@
 """Integration tests for Learning System flow (topics, progress, practice session submit, weak topics)."""
-from uuid import uuid4
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy import select
-
-from app.db.session import AsyncSessionLocal
 from app.models import PracticeSession
+from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_learning_topics_and_progress_lifecycle(client: AsyncClient, auth_headers: dict[str, str]):
+async def test_learning_topics_and_progress_lifecycle(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
     # 1. Create learning topic
     topic_res = await client.post(
         "/api/v1/learning/topics",
@@ -54,13 +52,17 @@ async def test_learning_topics_and_progress_lifecycle(client: AsyncClient, auth_
     assert update_prog_res.json()["percent_complete"] == 60.0
 
     # 5. Get progress
-    get_prog_res = await client.get(f"/api/v1/learning/progress/{topic_id}", headers=auth_headers)
+    get_prog_res = await client.get(
+        f"/api/v1/learning/progress/{topic_id}", headers=auth_headers
+    )
     assert get_prog_res.status_code == 200
     assert get_prog_res.json()["percent_complete"] == 60.0
 
 
 @pytest.mark.asyncio
-async def test_practice_session_submission_and_weak_topics(client: AsyncClient, auth_headers: dict[str, str], db_session):
+async def test_practice_session_submission_and_weak_topics(
+    client: AsyncClient, auth_headers: dict[str, str], db_session
+):
     # Create topic
     t_res = await client.post(
         "/api/v1/learning/topics",
@@ -129,12 +131,16 @@ async def test_practice_session_submission_and_weak_topics(client: AsyncClient, 
     assert res_data["progress_updated"] is True
 
     # Practice history
-    history_res = await client.get("/api/v1/learning/practice/history", headers=auth_headers)
+    history_res = await client.get(
+        "/api/v1/learning/practice/history", headers=auth_headers
+    )
     assert history_res.status_code == 200
     assert any(h["id"] == str(session_id) for h in history_res.json())
 
     # Check weak topics detection (50% < 60% threshold)
-    weak_res = await client.get("/api/v1/learning/practice/weak-topics?threshold=60", headers=auth_headers)
+    weak_res = await client.get(
+        "/api/v1/learning/practice/weak-topics?threshold=60", headers=auth_headers
+    )
     assert weak_res.status_code == 200
     weak_titles = [w["topic_title"] for w in weak_res.json()]
     assert "Data Structures & Algorithms" in weak_titles

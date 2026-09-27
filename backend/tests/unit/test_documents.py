@@ -1,6 +1,6 @@
 """Unit tests for document validation, extraction, and context summarization."""
-import pytest
 
+import pytest
 from app.services.document_service import (
     extract_text_from_bytes,
     summarize_for_context,

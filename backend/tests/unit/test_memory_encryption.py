@@ -1,8 +1,7 @@
 """Unit tests for memory encryption/decryption, embeddings, and similarity."""
-import pytest
 
+import pytest
 from app.services.memory_service import (
-    _cosine_similarity,
     compute_embedding,
     decrypt_value,
     encrypt_value,

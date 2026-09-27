@@ -1,8 +1,7 @@
 """Unit tests for JARVIS Tool System (registry, calculator, datetime, error handling)."""
-import pytest
 
-from app.tools.base import ToolResult
-from app.tools.registry import execute_tool, get_tool, list_tools, register_tool
+import pytest
+from app.tools.registry import execute_tool
 from app.tools.tools import CalculatorTool, DateTimeTool, register_stateless_tools
 
 

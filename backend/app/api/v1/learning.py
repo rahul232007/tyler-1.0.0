@@ -6,6 +6,7 @@ Provides:
   - AI-powered practice generation & submission
   - Weak-topic detection and recommendations
 """
+
 from __future__ import annotations
 
 import logging
@@ -13,7 +14,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import CurrentUser, DatabaseSession
@@ -49,7 +50,9 @@ router = APIRouter(prefix="/learning", tags=["Learning System"])
 # ─────────────────────────────────────────────
 # Helper
 # ─────────────────────────────────────────────
-async def _get_owned_topic(topic_id: UUID, user_id: UUID, session: DatabaseSession) -> LearningTopic:
+async def _get_owned_topic(
+    topic_id: UUID, user_id: UUID, session: DatabaseSession
+) -> LearningTopic:
     topic = await session.scalar(
         select(LearningTopic).where(
             LearningTopic.id == topic_id,
@@ -57,7 +60,9 @@ async def _get_owned_topic(topic_id: UUID, user_id: UUID, session: DatabaseSessi
         )
     )
     if topic is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Learning topic not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Learning topic not found."
+        )
     return topic
 
 
@@ -143,7 +148,9 @@ async def delete_topic(
 # ─────────────────────────────────────────────
 # Progress Endpoints
 # ─────────────────────────────────────────────
-@router.post("/progress", response_model=ProgressRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/progress", response_model=ProgressRead, status_code=status.HTTP_201_CREATED
+)
 async def create_progress(
     payload: ProgressCreate,
     current_user: CurrentUser,
@@ -211,7 +218,10 @@ async def get_progress(
         )
     )
     if progress is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Progress record not found for this topic.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Progress record not found for this topic.",
+        )
     return progress
 
 
@@ -255,7 +265,11 @@ async def update_progress(
 # ─────────────────────────────────────────────
 # Practice Endpoints
 # ─────────────────────────────────────────────
-@router.post("/practice/generate", response_model=PracticeSessionRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/practice/generate",
+    response_model=PracticeSessionRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def generate_practice(
     payload: PracticeGenerateRequest,
     current_user: CurrentUser,
@@ -320,11 +334,16 @@ async def submit_practice(
         .options(selectinload(PracticeSession.results))
     )
     if practice_session is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Practice session not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Practice session not found."
+        )
 
     questions = practice_session.questions or []
     if not questions:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Practice session has no questions.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Practice session has no questions.",
+        )
 
     answers_by_idx = {a.question_index: a.answer for a in payload.answers}
     llm = get_llm_service()
@@ -404,9 +423,13 @@ async def submit_practice(
     recommendations = [w.recommendation for w in weak_info]
 
     if not recommendations and avg_score >= 80:
-        recommendations.append("Outstanding work! You have strong mastery of this topic.")
+        recommendations.append(
+            "Outstanding work! You have strong mastery of this topic."
+        )
     elif not recommendations:
-        recommendations.append("Keep reviewing and practicing to solidify your knowledge.")
+        recommendations.append(
+            "Keep reviewing and practicing to solidify your knowledge."
+        )
 
     await session.flush()
 
@@ -464,5 +487,7 @@ async def get_practice_session(
         )
     )
     if practice is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Practice session not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Practice session not found."
+        )
     return practice

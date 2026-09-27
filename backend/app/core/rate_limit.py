@@ -5,14 +5,15 @@ custom implementation based on per-IP request counts.
 
 Never logs sensitive data.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from collections import defaultdict, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Callable
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse

@@ -1,4 +1,5 @@
 """Authenticated personal-memory CRUD, semantic search, and intelligence API."""
+
 import json
 from uuid import UUID
 
@@ -38,7 +39,9 @@ class MemoryExtractResponse(BaseModel):
     memories: list[dict]
 
 
-async def get_owned_memory(memory_id: UUID, user_id: UUID, session: DatabaseSession) -> PersonalMemory:
+async def get_owned_memory(
+    memory_id: UUID, user_id: UUID, session: DatabaseSession
+) -> PersonalMemory:
     """Fetch one memory only when it belongs to the authenticated user."""
     memory = await session.scalar(
         select(PersonalMemory).where(
@@ -47,7 +50,9 @@ async def get_owned_memory(memory_id: UUID, user_id: UUID, session: DatabaseSess
         )
     )
     if memory is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found."
+        )
     # Decrypt value if stored encrypted
     if memory.is_sensitive and memory.encrypted_value:
         try:
@@ -58,7 +63,12 @@ async def get_owned_memory(memory_id: UUID, user_id: UUID, session: DatabaseSess
 
 
 async def ensure_unique_memory_key(
-    *, user_id: UUID, category: str, memory_key: str, session: DatabaseSession, exclude_id: UUID | None = None
+    *,
+    user_id: UUID,
+    category: str,
+    memory_key: str,
+    session: DatabaseSession,
+    exclude_id: UUID | None = None,
 ) -> None:
     """Prevent duplicate memory identities for an individual user."""
     query = select(PersonalMemory.id).where(
@@ -76,7 +86,9 @@ async def ensure_unique_memory_key(
 
 
 @router.post("/", response_model=MemoryRead, status_code=status.HTTP_201_CREATED)
-async def create_memory(payload: MemoryCreate, current_user: CurrentUser, session: DatabaseSession) -> PersonalMemory:
+async def create_memory(
+    payload: MemoryCreate, current_user: CurrentUser, session: DatabaseSession
+) -> PersonalMemory:
     """Create one memory owned by the authenticated user with encryption & embeddings."""
     await ensure_unique_memory_key(
         user_id=current_user.id,
@@ -171,22 +183,31 @@ async def extract_memories(
 ) -> MemoryExtractResponse:
     """Trigger AI memory extraction from conversation text and store validated memories."""
     llm = get_llm_service()
-    candidates = await extract_memories_from_conversation(payload.conversation_text, llm)
+    candidates = await extract_memories_from_conversation(
+        payload.conversation_text, llm
+    )
     stored_count = 0
     if candidates:
-        stored_count = await store_extracted_memories(session, current_user.id, candidates)
+        stored_count = await store_extracted_memories(
+            session, current_user.id, candidates
+        )
     return MemoryExtractResponse(extracted_count=stored_count, memories=candidates)
 
 
 @router.get("/{memory_id}", response_model=MemoryRead)
-async def read_memory(memory_id: UUID, current_user: CurrentUser, session: DatabaseSession) -> PersonalMemory:
+async def read_memory(
+    memory_id: UUID, current_user: CurrentUser, session: DatabaseSession
+) -> PersonalMemory:
     """Read one owned memory, including a sensitive one when explicitly requested."""
     return await get_owned_memory(memory_id, current_user.id, session)
 
 
 @router.patch("/{memory_id}", response_model=MemoryRead)
 async def update_memory(
-    memory_id: UUID, payload: MemoryUpdate, current_user: CurrentUser, session: DatabaseSession
+    memory_id: UUID,
+    payload: MemoryUpdate,
+    current_user: CurrentUser,
+    session: DatabaseSession,
 ) -> PersonalMemory:
     """Update one user-owned memory after checking for key conflicts."""
     memory = await get_owned_memory(memory_id, current_user.id, session)
@@ -222,7 +243,9 @@ async def update_memory(
 
 
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_memory(memory_id: UUID, current_user: CurrentUser, session: DatabaseSession) -> Response:
+async def delete_memory(
+    memory_id: UUID, current_user: CurrentUser, session: DatabaseSession
+) -> Response:
     """Delete one user-owned memory."""
     memory = await get_owned_memory(memory_id, current_user.id, session)
     await session.delete(memory)
@@ -237,6 +260,11 @@ async def clear_memories(
 ) -> ClearMemoryResponse:
     """Clear all memories for the authenticated user after explicit confirmation."""
     if not confirm:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set confirm=true to clear all memories.")
-    result = await session.execute(delete(PersonalMemory).where(PersonalMemory.user_id == current_user.id))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Set confirm=true to clear all memories.",
+        )
+    result = await session.execute(
+        delete(PersonalMemory).where(PersonalMemory.user_id == current_user.id)
+    )
     return ClearMemoryResponse(deleted_count=result.rowcount or 0)

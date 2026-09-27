@@ -3,6 +3,7 @@ JARVIS - Structured Logging Configuration
 Provides JSON-structured logging with request ID tracking.
 Sensitive fields (passwords, tokens, API keys) are never logged.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,7 +49,7 @@ def _sanitize_record_extra(extra: dict[str, Any]) -> dict[str, Any]:
 class SensitiveFilter(logging.Filter):
     """Drop or redact log records that may contain sensitive information."""
 
-    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
+    def filter(self, record: logging.LogRecord) -> bool:
         # Redact message if it contains obvious secret patterns
         msg = str(record.getMessage()).lower()
         if any(s in msg for s in ("password=", "api_key=", "bearer ", "secret=")):
@@ -60,7 +61,7 @@ class SensitiveFilter(logging.Filter):
 class RequestIdFilter(logging.Filter):
     """Inject the current request ID into every log record."""
 
-    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
+    def filter(self, record: logging.LogRecord) -> bool:
         record.request_id = request_id_var.get("") or "-"
         return True
 

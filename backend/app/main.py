@@ -3,6 +3,7 @@ JARVIS - FastAPI Main Application Entry Point
 Production-hardened, structured logging, rate limiting, error handling,
 tool registry initialization, and comprehensive router configuration.
 """
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -46,6 +47,7 @@ async def _background_warmup():
     _prevent_windows_sleep()
     try:
         from app.services.stt import stt_service
+
         await stt_service.warmup_async()
         logger.info("Faster-Whisper STT model pre-warmed successfully")
     except Exception as exc:
@@ -53,6 +55,7 @@ async def _background_warmup():
 
     try:
         from app.services.llm import get_llm_service
+
         llm = get_llm_service()
         await llm.ollama.generate(prompt="hi", num_predict=1)
         logger.info("Ollama Qwen model pre-warmed successfully")
@@ -106,7 +109,11 @@ app.add_middleware(RateLimitMiddleware, enabled=settings.rate_limit_enabled)
 # ─────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        settings.frontend_url,
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

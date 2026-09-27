@@ -7,6 +7,7 @@ Builds a personalized system prompt by injecting:
   - Online/offline mode awareness
   - Provider capability info
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -184,4 +185,3 @@ def build_voice_system_prompt(
                 parts.append(f"Remember: {key}: {summary}.")
 
     return " ".join(parts)
-

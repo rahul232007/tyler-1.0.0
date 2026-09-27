@@ -1,4 +1,5 @@
 """JARVIS Tool System - Base class for all tools."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 
 class ToolResult(BaseModel):
     """Standardized tool execution result."""
+
     success: bool
     output: Any  # The actual result data
     error: str | None = None
@@ -31,4 +33,6 @@ class BaseTool(ABC):
         return ToolResult(success=True, output=output, tool_name=self.name)
 
     def _err(self, message: str) -> ToolResult:
-        return ToolResult(success=False, output=None, error=message, tool_name=self.name)
+        return ToolResult(
+            success=False, output=None, error=message, tool_name=self.name
+        )

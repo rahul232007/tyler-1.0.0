@@ -6,10 +6,10 @@ Clean abstraction over duckduckgo_search with:
 - Graceful failure (returns empty list, never raises to caller)
 - No sensitive data logged
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from app.core.config import get_settings
 
@@ -19,7 +19,8 @@ settings = get_settings()
 
 class SearchResult:
     """Single web search result."""
-    __slots__ = ("title", "url", "snippet")
+
+    __slots__ = ("snippet", "title", "url")
 
     def __init__(self, title: str, url: str, snippet: str) -> None:
         self.title = title
@@ -56,6 +57,7 @@ async def web_search(
 
     try:
         from duckduckgo_search import DDGS
+
         results: list[SearchResult] = []
         with DDGS(timeout=10) as ddgs:
             for item in ddgs.text(
@@ -75,7 +77,9 @@ async def web_search(
         return results
 
     except ImportError:
-        logger.error("duckduckgo_search not installed. Run: pip install duckduckgo-search")
+        logger.error(
+            "duckduckgo_search not installed. Run: pip install duckduckgo-search"
+        )
         return []
     except Exception as exc:
         logger.warning("Web search failed: %s — %s", type(exc).__name__, str(exc)[:100])

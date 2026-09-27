@@ -13,6 +13,7 @@ Privacy rules:
 - Decrypted values are never exposed in logs
 - is_sensitive=True memories are only included in context when explicitly requested
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -36,11 +37,14 @@ settings = get_settings()
 # Encryption helpers (Fernet symmetric encryption)
 # ─────────────────────────────────────────────
 
+
 def _get_fernet():
     """Lazy-load Fernet with the configured memory encryption key."""
     try:
-        from cryptography.fernet import Fernet
         import base64
+
+        from cryptography.fernet import Fernet
+
         # Fernet key must be 32 url-safe base64-encoded bytes
         raw_key = settings.memory_encryption_key.encode("utf-8")
         # Derive a valid 32-byte key from the config value
@@ -48,7 +52,9 @@ def _get_fernet():
         fernet_key = base64.urlsafe_b64encode(key_bytes)
         return Fernet(fernet_key)
     except ImportError as exc:
-        raise RuntimeError("cryptography package required for memory encryption.") from exc
+        raise RuntimeError(
+            "cryptography package required for memory encryption."
+        ) from exc
 
 
 def encrypt_value(value: dict[str, Any]) -> str:
@@ -65,12 +71,15 @@ def decrypt_value(token: str) -> dict[str, Any]:
         plaintext = f.decrypt(token.encode("utf-8"))
         return json.loads(plaintext.decode("utf-8"))
     except Exception as exc:
-        raise ValueError("Memory decryption failed — invalid or corrupted token.") from exc
+        raise ValueError(
+            "Memory decryption failed — invalid or corrupted token."
+        ) from exc
 
 
 # ─────────────────────────────────────────────
 # Simple TF-IDF embedding (no GPU/model required)
 # ─────────────────────────────────────────────
+
 
 def _tokenize(text: str) -> list[str]:
     """Lowercase word tokenization."""
@@ -95,7 +104,9 @@ def compute_embedding(text: str) -> dict[str, float]:
     return {k: v / norm for k, v in freq.items()}
 
 
-def _cosine_similarity(a: dict[str, float] | list[float], b: dict[str, float] | list[float]) -> float:
+def _cosine_similarity(
+    a: dict[str, float] | list[float], b: dict[str, float] | list[float]
+) -> float:
     """Compute cosine similarity between two term frequency dictionaries or vectors."""
     if not a or not b:
         return 0.0
@@ -199,14 +210,16 @@ def _validate_memory_candidates(candidates: Any) -> list[dict[str, Any]]:
             continue
         importance = max(0.0, min(1.0, importance))
 
-        results.append({
-            "category": category,
-            "memory_key": memory_key,
-            "value": value,
-            "importance": importance,
-            "is_sensitive": is_sensitive,
-            "source": "auto_extraction",
-        })
+        results.append(
+            {
+                "category": category,
+                "memory_key": memory_key,
+                "value": value,
+                "importance": importance,
+                "is_sensitive": is_sensitive,
+                "source": "auto_extraction",
+            }
+        )
 
     return results
 
@@ -214,6 +227,7 @@ def _validate_memory_candidates(candidates: Any) -> list[dict[str, Any]]:
 # ─────────────────────────────────────────────
 # Database helpers
 # ─────────────────────────────────────────────
+
 
 async def get_relevant_memories(
     session: AsyncSession,
@@ -288,7 +302,9 @@ async def store_extracted_memories(
             try:
                 encrypted_value = encrypt_value(candidate["value"])
             except Exception as exc:
-                logger.warning("Could not encrypt sensitive memory: %s", type(exc).__name__)
+                logger.warning(
+                    "Could not encrypt sensitive memory: %s", type(exc).__name__
+                )
 
         mem = PersonalMemory(
             user_id=user_id,
@@ -315,10 +331,12 @@ def format_memories_for_context(memories: list[PersonalMemory]) -> list[dict[str
     """
     result = []
     for mem in memories:
-        result.append({
-            "memory_key": mem.memory_key,
-            "category": mem.category,
-            "value": mem.value,  # Already decrypted in-memory value field
-            "importance": mem.importance,
-        })
+        result.append(
+            {
+                "memory_key": mem.memory_key,
+                "category": mem.category,
+                "value": mem.value,  # Already decrypted in-memory value field
+                "importance": mem.importance,
+            }
+        )
     return result

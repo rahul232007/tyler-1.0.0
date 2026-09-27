@@ -1,17 +1,29 @@
 """Unit tests for intelligent LLM Router (task detection, routing chain, and fallback)."""
-import pytest
 
+import pytest
 from app.services.llm import LLMService, TaskType, get_llm_service
 
 
 def test_task_detection():
     llm = LLMService()
 
-    assert llm.detect_task_type("Can you write a python function to sort a list?") == TaskType.CODING.value
+    assert (
+        llm.detect_task_type("Can you write a python function to sort a list?")
+        == TaskType.CODING.value
+    )
     assert llm.detect_task_type("def calculate_sum(a, b):") == TaskType.CODING.value
-    assert llm.detect_task_type("Can you describe what is in this image or photo?") == TaskType.VISION.value
-    assert llm.detect_task_type("Solve this math equation and prove the theorem") == TaskType.SPECIALIZED.value
-    assert llm.detect_task_type("Tell me a funny story about space travel") == TaskType.GENERAL_CHAT.value
+    assert (
+        llm.detect_task_type("Can you describe what is in this image or photo?")
+        == TaskType.VISION.value
+    )
+    assert (
+        llm.detect_task_type("Solve this math equation and prove the theorem")
+        == TaskType.SPECIALIZED.value
+    )
+    assert (
+        llm.detect_task_type("Tell me a funny story about space travel")
+        == TaskType.GENERAL_CHAT.value
+    )
 
 
 def test_provider_chain_auto_mode():

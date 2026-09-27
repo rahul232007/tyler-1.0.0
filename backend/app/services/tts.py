@@ -9,6 +9,7 @@ Key improvements:
 - Tamil/English language routing
 - Proper error handling and logging
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -34,7 +35,9 @@ class ElevenLabsTTS:
     def __init__(self) -> None:
         self.api_key = (settings.elevenlabs_api_key or "").strip()
         self.voice_id = (settings.elevenlabs_voice_id or "").strip()
-        self.model_id = (settings.elevenlabs_model_id or "eleven_multilingual_v2").strip()
+        self.model_id = (
+            settings.elevenlabs_model_id or "eleven_multilingual_v2"
+        ).strip()
         self.stability = settings.elevenlabs_stability
         self.similarity_boost = settings.elevenlabs_similarity_boost
         self.style = settings.elevenlabs_style
@@ -49,6 +52,7 @@ class ElevenLabsTTS:
                 )
             try:
                 from elevenlabs import ElevenLabs
+
                 self._client = ElevenLabs(api_key=self.api_key)
             except ImportError as exc:
                 raise RuntimeError(
@@ -73,6 +77,7 @@ class ElevenLabsTTS:
         client = self._get_client()
         try:
             from elevenlabs import VoiceSettings
+
             voice_settings = VoiceSettings(
                 stability=self.stability,
                 similarity_boost=self.similarity_boost,
@@ -101,7 +106,9 @@ class ElevenLabsTTS:
 
         except Exception as exc:
             err_str = str(exc).lower()
-            logger.warning("ElevenLabs TTS failed (%s). Falling back to local TTS engine.", err_str)
+            logger.warning(
+                "ElevenLabs TTS failed (%s). Falling back to local TTS engine.", err_str
+            )
             local_audio = self._generate_local_sync(text)
             if local_audio:
                 return local_audio
@@ -122,6 +129,7 @@ class ElevenLabsTTS:
         try:
             import os
             import tempfile
+
             import pyttsx3
 
             engine = pyttsx3.init()

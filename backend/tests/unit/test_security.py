@@ -1,16 +1,15 @@
 """Unit tests for security utilities (password hashing, JWT verification, token versioning)."""
-import time
+
 from uuid import uuid4
 
 import pytest
-from jose import JWTError
-
 from app.core.security import (
     create_access_token,
     decode_access_token,
     hash_password,
     verify_password,
 )
+from jose import JWTError
 
 
 def test_password_hashing_and_verification():

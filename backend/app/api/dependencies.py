@@ -1,4 +1,5 @@
 """Reusable FastAPI dependencies for authenticated endpoints."""
+
 from typing import Annotated
 from uuid import UUID
 
@@ -11,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import decode_access_token
 from app.db.session import get_db_session
 from app.models import User
-
 
 bearer_scheme = HTTPBearer(auto_error=False)
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]

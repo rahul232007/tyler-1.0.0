@@ -3,9 +3,11 @@ JARVIS - Core Configuration
 Reads all settings from .env file using Pydantic Settings.
 Never hard-code secrets here.
 """
-from pydantic_settings import BaseSettings
-from pydantic import Field
+
 from functools import lru_cache
+
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -29,11 +31,17 @@ class Settings(BaseSettings):
 
     # NVIDIA
     nvidia_api_key: str = Field(default="", alias="NVIDIA_API_KEY")
-    nvidia_base_url: str = Field(default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_BASE_URL")
-    nvidia_model: str = Field(default="meta/llama-3.1-70b-instruct", alias="NVIDIA_MODEL")
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_BASE_URL"
+    )
+    nvidia_model: str = Field(
+        default="meta/llama-3.1-70b-instruct", alias="NVIDIA_MODEL"
+    )
 
     # Ollama
-    ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
+    ollama_base_url: str = Field(
+        default="http://localhost:11434", alias="OLLAMA_BASE_URL"
+    )
     ollama_model: str = Field(default="qwen2.5:3b", alias="OLLAMA_MODEL")
 
     @property
@@ -51,10 +59,18 @@ class Settings(BaseSettings):
     # --- Voice / TTS ---
     elevenlabs_api_key: str = Field(default="", alias="ELEVENLABS_API_KEY")
     elevenlabs_voice_id: str = Field(default="", alias="ELEVENLABS_VOICE_ID")
-    elevenlabs_model_id: str = Field(default="eleven_multilingual_v2", alias="ELEVENLABS_MODEL_ID")
-    elevenlabs_stability: float = Field(default=0.5, ge=0.0, le=1.0, alias="ELEVENLABS_STABILITY")
-    elevenlabs_similarity_boost: float = Field(default=0.75, ge=0.0, le=1.0, alias="ELEVENLABS_SIMILARITY_BOOST")
-    elevenlabs_style: float = Field(default=0.0, ge=0.0, le=1.0, alias="ELEVENLABS_STYLE")
+    elevenlabs_model_id: str = Field(
+        default="eleven_multilingual_v2", alias="ELEVENLABS_MODEL_ID"
+    )
+    elevenlabs_stability: float = Field(
+        default=0.5, ge=0.0, le=1.0, alias="ELEVENLABS_STABILITY"
+    )
+    elevenlabs_similarity_boost: float = Field(
+        default=0.75, ge=0.0, le=1.0, alias="ELEVENLABS_SIMILARITY_BOOST"
+    )
+    elevenlabs_style: float = Field(
+        default=0.0, ge=0.0, le=1.0, alias="ELEVENLABS_STYLE"
+    )
 
     # --- Memory ---
     memory_encryption_key: str = Field(alias="MEMORY_ENCRYPTION_KEY")
@@ -79,7 +95,7 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """
     Returns cached settings instance.

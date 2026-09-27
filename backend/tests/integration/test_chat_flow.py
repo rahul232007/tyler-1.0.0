@@ -1,13 +1,15 @@
 """Integration tests for Conversations, Messages, Search, Export, and Documents."""
+
 import io
-from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_conversation_crud_and_search_export(client: AsyncClient, auth_headers: dict[str, str]):
+async def test_conversation_crud_and_search_export(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
     # 1. Create conversation
     create_res = await client.post(
         "/api/v1/conversations/",
@@ -35,20 +37,26 @@ async def test_conversation_crud_and_search_export(client: AsyncClient, auth_hea
     assert patch_res.json()["title"] == "Advanced Python Asyncio"
 
     # 4. Search conversations
-    search_res = await client.get("/api/v1/conversations/search?q=Asyncio", headers=auth_headers)
+    search_res = await client.get(
+        "/api/v1/conversations/search?q=Asyncio", headers=auth_headers
+    )
     assert search_res.status_code == 200
     results = search_res.json()["conversations"]
     assert any(c["id"] == conv_id for c in results)
 
     # 5. Export conversation
-    export_res = await client.get(f"/api/v1/conversations/{conv_id}/export", headers=auth_headers)
+    export_res = await client.get(
+        f"/api/v1/conversations/{conv_id}/export", headers=auth_headers
+    )
     assert export_res.status_code == 200
     export_data = export_res.json()
     assert export_data["id"] == conv_id
     assert "messages" in export_data
 
     # 6. Delete conversation
-    del_res = await client.delete(f"/api/v1/conversations/{conv_id}", headers=auth_headers)
+    del_res = await client.delete(
+        f"/api/v1/conversations/{conv_id}", headers=auth_headers
+    )
     assert del_res.status_code == 204
 
     # 7. Get after delete -> 404
@@ -57,12 +65,18 @@ async def test_conversation_crud_and_search_export(client: AsyncClient, auth_hea
 
 
 @pytest.mark.asyncio
-async def test_document_upload_and_extraction(client: AsyncClient, auth_headers: dict[str, str]):
+async def test_document_upload_and_extraction(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
     # Upload text document
-    file_bytes = b"JARVIS is a private AI tutor designed to teach Python, AI, and Mathematics."
+    file_bytes = (
+        b"JARVIS is a private AI tutor designed to teach Python, AI, and Mathematics."
+    )
     files = {"file": ("tutor_curriculum.txt", io.BytesIO(file_bytes), "text/plain")}
 
-    upload_res = await client.post("/api/v1/documents/upload", headers=auth_headers, files=files)
+    upload_res = await client.post(
+        "/api/v1/documents/upload", headers=auth_headers, files=files
+    )
     assert upload_res.status_code == 201
     doc_data = upload_res.json()
     doc_id = doc_data["id"]

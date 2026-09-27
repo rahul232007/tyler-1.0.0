@@ -1,4 +1,5 @@
 """Unit tests for Search Service."""
+
 from app.services.search_service import SearchResult, format_search_results_for_context
 
 

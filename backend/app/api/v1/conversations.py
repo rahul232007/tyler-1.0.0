@@ -1,8 +1,9 @@
 """Authenticated conversation management, message history, search, and export endpoints."""
+
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
 from app.api.dependencies import CurrentUser, DatabaseSession
@@ -13,7 +14,6 @@ from app.schemas.conversation import (
     ConversationDetailRead,
     ConversationRead,
     ConversationUpdate,
-    MessageRead,
 )
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
@@ -31,7 +31,9 @@ async def get_owned_conversation(
         .options(selectinload(Conversation.messages))
     )
     if conversation is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found."
+        )
     return conversation
 
 
@@ -75,7 +77,9 @@ async def list_conversations(
 async def search_conversations(
     current_user: CurrentUser,
     session: DatabaseSession,
-    q: str = Query(..., min_length=1, description="Search term across conversations and messages"),
+    q: str = Query(
+        ..., min_length=1, description="Search term across conversations and messages"
+    ),
     limit: int = Query(default=20, ge=1, le=50),
 ) -> dict[str, object]:
     """Search conversation titles and message content for the authenticated user."""
@@ -172,10 +176,15 @@ async def update_conversation(
     session: DatabaseSession,
 ) -> Conversation:
     """Rename or update a conversation owned by the authenticated user."""
-    conversation = await get_owned_conversation(conversation_id, current_user.id, session)
+    conversation = await get_owned_conversation(
+        conversation_id, current_user.id, session
+    )
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide at least one field to update.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide at least one field to update.",
+        )
     for field_name, value in updates.items():
         setattr(conversation, field_name, value)
     await session.flush()
@@ -190,20 +199,28 @@ async def delete_conversation(
     session: DatabaseSession,
 ) -> Response:
     """Delete a conversation and all nested messages for the authenticated user."""
-    conversation = await get_owned_conversation(conversation_id, current_user.id, session)
+    conversation = await get_owned_conversation(
+        conversation_id, current_user.id, session
+    )
     await session.delete(conversation)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/{conversation_id}/history", response_model=ConversationDeleteHistoryResponse)
+@router.delete(
+    "/{conversation_id}/history", response_model=ConversationDeleteHistoryResponse
+)
 async def delete_conversation_history(
     conversation_id: UUID,
     current_user: CurrentUser,
     session: DatabaseSession,
 ) -> ConversationDeleteHistoryResponse:
     """Delete all messages inside a conversation but keep the conversation itself."""
-    conversation = await get_owned_conversation(conversation_id, current_user.id, session)
-    result = await session.execute(delete(Message).where(Message.conversation_id == conversation.id))
+    conversation = await get_owned_conversation(
+        conversation_id, current_user.id, session
+    )
+    result = await session.execute(
+        delete(Message).where(Message.conversation_id == conversation.id)
+    )
     return ConversationDeleteHistoryResponse(
         conversation_id=conversation.id,
         deleted_count=result.rowcount or 0,

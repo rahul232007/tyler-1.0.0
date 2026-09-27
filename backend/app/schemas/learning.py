@@ -1,12 +1,12 @@
 """Pydantic schemas for the Learning System."""
+
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ─────────────────────────────────────────────
 # Enums / Literals
@@ -39,7 +39,7 @@ class TopicUpdate(BaseModel):
     status: TopicStatus | None = None
 
     @model_validator(mode="after")
-    def require_change(self) -> "TopicUpdate":
+    def require_change(self) -> TopicUpdate:
         if not self.model_fields_set:
             raise ValueError("Provide at least one field to update.")
         return self
@@ -78,7 +78,7 @@ class ProgressUpdate(BaseModel):
     notes: str | None = Field(default=None, max_length=5000)
 
     @model_validator(mode="after")
-    def require_change(self) -> "ProgressUpdate":
+    def require_change(self) -> ProgressUpdate:
         if not self.model_fields_set:
             raise ValueError("Provide at least one field to update.")
         return self
@@ -146,6 +146,7 @@ class PracticeSessionRead(BaseModel):
 # ─────────────────────────────────────────────
 class QuestionAnswer(BaseModel):
     """Answer to one question in a practice session."""
+
     question_index: int = Field(ge=0)
     answer: str = Field(min_length=0, max_length=5000)
 

@@ -2,6 +2,7 @@
 JARVIS - Consistent API Error Responses and Global Exception Handlers.
 All API errors return a uniform JSON envelope so clients parse one format.
 """
+
 from __future__ import annotations
 
 import logging
@@ -9,7 +10,6 @@ import logging
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +38,11 @@ def register_error_handlers(app: FastAPI) -> None:
     """Attach global exception handlers to the FastAPI application."""
 
     @app.exception_handler(HTTPException)
-    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    async def http_exception_handler(
+        request: Request, exc: HTTPException
+    ) -> JSONResponse:
         from app.core.logging_config import request_id_var
+
         rid = request_id_var.get("") or "-"
         # Don't log 401/404 at error level — these are expected
         log_fn = logger.warning if exc.status_code < 500 else logger.error
@@ -62,6 +65,7 @@ def register_error_handlers(app: FastAPI) -> None:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         from app.core.logging_config import request_id_var
+
         rid = request_id_var.get("") or "-"
         errors = exc.errors()
         # Sanitize: remove any 'input' fields that may contain user secrets
@@ -83,8 +87,11 @@ def register_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         from app.core.logging_config import request_id_var
+
         rid = request_id_var.get("") or "-"
         logger.error(
             "Unhandled exception — %s %s — %s: %s",

@@ -5,6 +5,7 @@ weak-topic detection, and recommendations.
 
 Uses the existing LLM router — no duplicate provider logic.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,12 +18,8 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import LearningProgress, LearningTopic, PracticeResult, PracticeSession
+from app.models import LearningProgress, LearningTopic, PracticeResult
 from app.schemas.learning import (
-    GeneratedQuestion,
-    MCQOption,
-    PracticeSubmitResponse,
-    QuestionResult,
     WeakTopicInfo,
 )
 
@@ -82,6 +79,7 @@ Return ONLY the JSON object."""
 # Practice Generation
 # ─────────────────────────────────────────────
 
+
 async def generate_practice_questions(
     topic_title: str,
     question_type: str,
@@ -111,11 +109,16 @@ async def generate_practice_questions(
 
     questions = _parse_questions(raw, question_type)
     if not questions:
-        raise RuntimeError("LLM did not return valid practice questions. Please try again.")
+        raise RuntimeError(
+            "LLM did not return valid practice questions. Please try again."
+        )
 
     logger.info(
         "Generated %d %s questions for topic '%s' (%s)",
-        len(questions), question_type, topic_title, difficulty,
+        len(questions),
+        question_type,
+        topic_title,
+        difficulty,
     )
     return questions
 
@@ -159,13 +162,16 @@ def _parse_questions(raw: str, question_type: str) -> list[dict[str, Any]]:
 # Answer Grading
 # ─────────────────────────────────────────────
 
+
 def grade_mcq(user_answer: str, correct_answer: str) -> tuple[bool, float, str]:
     """Grade an MCQ answer. Returns (is_correct, score, feedback)."""
     user = user_answer.strip().upper()
     correct = correct_answer.strip().upper()
     is_correct = user == correct
     score = 100.0 if is_correct else 0.0
-    feedback = "Correct!" if is_correct else f"Incorrect. The correct answer is {correct}."
+    feedback = (
+        "Correct!" if is_correct else f"Incorrect. The correct answer is {correct}."
+    )
     return is_correct, score, feedback
 
 
@@ -202,7 +208,10 @@ async def grade_open_answer(
             feedback = str(result.get("feedback", ""))
             return is_correct, score, feedback
     except Exception as exc:
-        logger.warning("LLM grading failed: %s — falling back to keyword match.", type(exc).__name__)
+        logger.warning(
+            "LLM grading failed: %s — falling back to keyword match.",
+            type(exc).__name__,
+        )
 
     # Fallback: keyword-based scoring
     user_lower = user_answer.lower()
@@ -219,6 +228,7 @@ async def grade_open_answer(
 # ─────────────────────────────────────────────
 # Weak Topic Detection
 # ─────────────────────────────────────────────
+
 
 async def detect_weak_topics(
     session: AsyncSession,
@@ -275,6 +285,7 @@ def _generate_recommendation(topic_title: str, avg_score: float) -> str:
 # ─────────────────────────────────────────────
 # Progress Update
 # ─────────────────────────────────────────────
+
 
 async def update_progress_after_practice(
     session: AsyncSession,

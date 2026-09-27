@@ -9,15 +9,11 @@ Security:
 - Content-type validation
 - Safe temp directory management
 """
+
 from __future__ import annotations
 
-import hashlib
 import logging
-import os
-import tempfile
-import uuid
 from pathlib import Path
-from typing import Any
 
 from app.core.config import get_settings
 
@@ -59,14 +55,18 @@ def validate_document(filename: str, content_type: str | None, size_bytes: int) 
 
     # Content-type check (soft — browsers may send generic types)
     if content_type and content_type not in SUPPORTED_CONTENT_TYPES:
-        logger.warning("Unexpected content-type '%s' for document upload.", content_type)
+        logger.warning(
+            "Unexpected content-type '%s' for document upload.", content_type
+        )
 
 
 def extract_text_from_pdf(data: bytes) -> str:
     """Extract text from PDF bytes using pypdf."""
     try:
         import io
+
         from pypdf import PdfReader
+
         reader = PdfReader(io.BytesIO(data))
         pages = []
         for page in reader.pages:

@@ -9,6 +9,7 @@ Handles:
   - Tool execution system (web search, calculator, datetime, memory, etc.)
   - Background memory extraction from user conversation
 """
+
 from __future__ import annotations
 
 import json
@@ -145,10 +146,16 @@ async def _handle_tool_calling(
     current_response = raw_response
 
     # Look for tool call JSON patterns
-    tool_match = re.search(r'\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\s*\}', current_response)
+    tool_match = re.search(
+        r'\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\s*\}',
+        current_response,
+    )
     if not tool_match:
         # Also check for markdown code block json
-        tool_match = re.search(r'```(?:json)?\s*\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\s*\}\s*```', current_response)
+        tool_match = re.search(
+            r'```(?:json)?\s*\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\s*\}\s*```',
+            current_response,
+        )
 
     if tool_match:
         tool_name = tool_match.group(1).strip()
@@ -157,21 +164,29 @@ async def _handle_tool_calling(
         except Exception:
             tool_args = {}
 
-        logger.info("LLM triggered tool: %s with args: %s", tool_name, list(tool_args.keys()))
+        logger.info(
+            "LLM triggered tool: %s with args: %s", tool_name, list(tool_args.keys())
+        )
         result = await execute_tool(tool_name, **tool_args)
         tools_used.append(tool_name)
 
-        tool_output_str = json.dumps(result.output or {"error": result.error}, default=str)
+        tool_output_str = json.dumps(
+            result.output or {"error": result.error}, default=str
+        )
         followup_prompt = (
             f"{prompt_text}\n\n"
             f"[Tool Result for '{tool_name}']:\n{tool_output_str}\n\n"
             f"Now provide the final natural language answer to the user based on this tool result."
         )
         try:
-            current_response = await llm.generate(prompt=followup_prompt, system=system_prompt)
+            current_response = await llm.generate(
+                prompt=followup_prompt, system=system_prompt
+            )
         except Exception as exc:
             logger.warning("Followup generation after tool failed: %s", exc)
-            current_response = f"I retrieved the information ({tool_name}): {tool_output_str}"
+            current_response = (
+                f"I retrieved the information ({tool_name}): {tool_output_str}"
+            )
 
     return current_response, tools_used
 
@@ -195,14 +210,20 @@ async def chat(
     """
     user_msg = request.message.strip()
     if not user_msg:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty"
+        )
 
     llm = get_llm_service()
 
     # Step 1: Conversation lookup or creation
-    conversation = await _get_owned_conversation(session, current_user.id, request.conversation_id)
+    conversation = await _get_owned_conversation(
+        session, current_user.id, request.conversation_id
+    )
     if request.conversation_id is not None and conversation is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found."
+        )
 
     if conversation is None:
         title = user_msg[:35] if len(user_msg) <= 35 else user_msg[:32] + "..."
@@ -219,7 +240,9 @@ async def chat(
     doc_context = ""
     if request.document_id:
         doc = await session.scalar(
-            select(Document).where(Document.id == request.document_id, Document.user_id == current_user.id)
+            select(Document).where(
+                Document.id == request.document_id, Document.user_id == current_user.id
+            )
         )
         if doc and doc.extracted_text:
             doc_context = f"\n\n[DOCUMENT CONTEXT: {doc.filename}]\n{summarize_for_context(doc.extracted_text, 3000)}\n"
@@ -273,17 +296,64 @@ async def chat(
     try:
         # Streaming response
         if request.stream:
+
+            async def _persist_and_extract(
+                assistant_text: str,
+                provider: str,
+                conversation_id,
+                user_msg_text: str,
+            ):
+                """Background task: DB commit + memory extraction — NOT on the streaming path."""
+                import asyncio
+                try:
+                    from app.db.base import async_session_factory
+                    async with async_session_factory() as bg_session:
+                        bg_msg = Message(
+                            conversation_id=conversation_id,
+                            role="assistant",
+                            content=assistant_text,
+                            model_provider=provider,
+                        )
+                        bg_session.add(bg_msg)
+                        await bg_session.commit()
+                        logger.info("[TIMING_STAGE] BG DB Commit done for conv %s", conversation_id)
+                        try:
+                            from app.services.llm import get_llm_service as _get_llm
+                            from app.services.memory_service import (
+                                extract_memories_from_conversation,
+                                store_extracted_memories,
+                            )
+                            snippet = f"User: {user_msg_text}\nAssistant: {assistant_text[:300]}"
+                            llm2 = _get_llm()
+                            extracted = await extract_memories_from_conversation(snippet, llm2)
+                            if extracted:
+                                await store_extracted_memories(bg_session, current_user.id, extracted)
+                        except Exception as mem_exc:
+                            logger.debug("BG memory extraction skipped: %s", mem_exc)
+                except Exception as exc:
+                    logger.debug("BG DB persist failed (non-critical): %s", exc)
+
             async def token_generator():
                 tokens = []
                 t_first_token = None
                 t_ollama_start = time.time()
-                logger.info("[TIMING_STAGE] FastAPI Receive: %.4f | Ollama Start: %.4f", t_fastapi_receive, t_ollama_start)
+                logger.info(
+                    "[TIMING_STAGE] FastAPI Receive: %.4f | Ollama Start: %.4f",
+                    t_fastapi_receive,
+                    t_ollama_start,
+                )
                 try:
-                    async for token in llm.stream(prompt=prompt_text, system=system_prompt):
+                    async for token in llm.stream(
+                        prompt=prompt_text, system=system_prompt
+                    ):
                         if t_first_token is None:
                             t_first_token = time.time()
                             ttft = round(t_first_token - t_fastapi_receive, 3)
-                            logger.info("[TIMING_STAGE] First Token: %.4f | TTFT: %.3fs", t_first_token, ttft)
+                            logger.info(
+                                "[TIMING_STAGE] First Token: %.4f | TTFT: %.3fs",
+                                t_first_token,
+                                ttft,
+                            )
                         tokens.append(token)
                         yield token
                 finally:
@@ -293,60 +363,51 @@ async def chat(
                     assistant_text = "".join(tokens)
                     if assistant_text and conversation:
                         provider = llm.last_provider_used or "ollama"
-                        assistant_message = Message(
-                            conversation_id=conversation.id,
-                            role="assistant",
-                            content=assistant_text,
-                            model_provider=provider,
-                        )
-                        session.add(assistant_message)
-                        await session.commit()
-                        t_db_completion = time.time()
-                        logger.info(
-                            "[TIMING_STAGE] DB Completion: %.4f | Total Backend Time: %.3fs | TTFT: %.3fs",
-                            t_db_completion, t_db_completion - t_fastapi_receive, (t_first_token - t_fastapi_receive) if t_first_token else 0.0
-                        )
 
-                        # Write precise server stage timestamps for verification
+                        # Timing log (file-write only, non-blocking)
                         try:
-                            import os, json
+                            import json, os as _os
                             timing_dir = r"d:\project\jarvis model 1\scratch"
-                            os.makedirs(timing_dir, exist_ok=True)
-                            timing_file = os.path.join(timing_dir, "server_timings.jsonl")
+                            _os.makedirs(timing_dir, exist_ok=True)
+                            timing_file = _os.path.join(timing_dir, "server_timings.jsonl")
                             record = {
                                 "fastapi_receive": t_fastapi_receive,
                                 "ollama_start": t_ollama_start,
                                 "first_token": t_first_token,
                                 "final_token": t_final_token,
-                                "database_completion": t_db_completion,
                             }
                             with open(timing_file, "a", encoding="utf-8") as f:
                                 f.write(json.dumps(record) + "\n")
-                        except Exception as e:
-                            logger.error("Failed to write timing record: %s", e)
+                        except Exception:
+                            pass
 
-                        # Non-blocking background memory extraction
-                        try:
-                            interaction_snippet = f"User: {user_msg}\nAssistant: {assistant_text[:300]}"
-                            extracted = await extract_memories_from_conversation(interaction_snippet, llm)
-                            if extracted:
-                                await store_extracted_memories(session, current_user.id, extracted)
-                        except Exception as exc:
-                            logger.debug("Background memory extraction skipped: %s", exc)
+                        # ✅ Fire-and-forget DB + memory — does NOT block streaming
+                        asyncio.create_task(_persist_and_extract(
+                            assistant_text=assistant_text,
+                            provider=provider,
+                            conversation_id=conversation.id,
+                            user_msg_text=user_msg,
+                        ))
 
             headers = {
                 "X-Provider-Used": llm.last_provider_used or "ollama",
                 "Access-Control-Expose-Headers": "X-Provider-Used",
             }
-            return StreamingResponse(token_generator(), media_type="text/plain", headers=headers)
+            return StreamingResponse(
+                token_generator(), media_type="text/plain", headers=headers
+            )
 
         # Non-streaming response
         raw_response = await llm.generate(prompt=prompt_text, system=system_prompt)
-        final_response, tools_used = await _handle_tool_calling(raw_response, prompt_text, system_prompt, llm)
+        final_response, tools_used = await _handle_tool_calling(
+            raw_response, prompt_text, system_prompt, llm
+        )
 
         provider = llm.last_provider_used or "unknown"
         model_used = llm.last_model_used
-        fallback_used = bool(llm.last_fallback_info and llm.last_fallback_info.get("fallback_used"))
+        fallback_used = bool(
+            llm.last_fallback_info and llm.last_fallback_info.get("fallback_used")
+        )
 
         assistant_message = Message(
             conversation_id=conversation.id,
@@ -361,7 +422,9 @@ async def chat(
         # Automatic memory extraction from recent interaction
         try:
             interaction_snippet = f"User: {user_msg}\nAssistant: {final_response[:300]}"
-            extracted = await extract_memories_from_conversation(interaction_snippet, llm)
+            extracted = await extract_memories_from_conversation(
+                interaction_snippet, llm
+            )
             if extracted:
                 await store_extracted_memories(session, current_user.id, extracted)
         except Exception as exc:
@@ -377,10 +440,15 @@ async def chat(
         )
 
     except RuntimeError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        )
     except Exception as e:
         logger.error("Chat generation failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"LLM error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"LLM error: {e!s}",
+        )
 
 
 @router.get("/status")

@@ -1,4 +1,5 @@
 """JARVIS Tool Registry — register, discover, and execute tools by name."""
+
 from __future__ import annotations
 
 import logging
@@ -37,8 +38,10 @@ async def execute_tool(name: str, **kwargs: Any) -> ToolResult:
     tool = get_tool(name)
     if tool is None:
         return ToolResult(
-            success=False, output=None,
-            error=f"Tool '{name}' not found.", tool_name=name,
+            success=False,
+            output=None,
+            error=f"Tool '{name}' not found.",
+            tool_name=name,
         )
     try:
         logger.info("Executing tool '%s' with %d arg(s).", name, len(kwargs))
@@ -47,7 +50,9 @@ async def execute_tool(name: str, **kwargs: Any) -> ToolResult:
             result = ToolResult(success=True, output=result, tool_name=name)
         return result
     except Exception as exc:
-        logger.warning("Tool '%s' raised %s: %s", name, type(exc).__name__, str(exc)[:200])
+        logger.warning(
+            "Tool '%s' raised %s: %s", name, type(exc).__name__, str(exc)[:200]
+        )
         return ToolResult(success=False, output=None, error=str(exc), tool_name=name)
 
 

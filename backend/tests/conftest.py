@@ -1,20 +1,19 @@
 """Shared pytest fixtures for JARVIS test suite."""
-import asyncio
-from typing import AsyncGenerator
+
+from collections.abc import AsyncGenerator
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import NullPool
-
 from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password
 from app.db.session import get_db_session
 from app.main import app
 from app.models import User
 from app.tools.tools import register_stateless_tools
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 settings = get_settings()
 
@@ -43,6 +42,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest_asyncio.fixture(autouse=True)
 def override_db_dependency(db_session):
     """Override FastAPI get_db_session dependency with the test session."""
+
     async def _get_test_db():
         yield db_session
 

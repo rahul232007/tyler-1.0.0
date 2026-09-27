@@ -3,6 +3,7 @@ Local microphone, transcription, and voice-chat endpoints.
 Complete end-to-end voice pipeline:
 Audio -> Faster-Whisper STT -> AI Router -> ElevenLabs TTS -> Audio response.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,15 +18,17 @@ from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile, 
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import CurrentUser, DatabaseSession
-from app.api.v1.chat import _build_chat_prompt, _get_owned_conversation
+from app.api.v1.chat import _get_owned_conversation
 from app.core.config import get_settings
 from app.core.prompts import build_system_prompt, build_voice_system_prompt
 from app.models import Conversation, Message
 from app.services.llm import get_llm_service
-from app.services.memory_service import format_memories_for_context, get_relevant_memories
+from app.services.memory_service import (
+    format_memories_for_context,
+    get_relevant_memories,
+)
 from app.services.stt import (
     MAX_AUDIO_BYTES,
-    SUPPORTED_AUDIO_TYPES,
     stt_service,
     validate_audio_content_type,
 )
@@ -46,7 +49,9 @@ async def voice_status() -> dict[str, object]:
         "supported_languages": ["auto", "en", "ta"],
         "tts_configured": tts_service.is_configured(),
         "tts_model": settings.elevenlabs_model_id,
-        "tts_voice_id": settings.elevenlabs_voice_id[:6] + "..." if settings.elevenlabs_voice_id else None,
+        "tts_voice_id": settings.elevenlabs_voice_id[:6] + "..."
+        if settings.elevenlabs_voice_id
+        else None,
     }
 
 
@@ -57,11 +62,15 @@ async def transcribe_audio(
 ) -> dict[str, object]:
     """Transcribe uploaded local audio data without sending it to any external service."""
     if not audio_file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is required.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is required."
+        )
 
     contents = await audio_file.read()
     if not contents:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is empty.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is empty."
+        )
 
     if len(contents) > MAX_AUDIO_BYTES:
         raise HTTPException(
@@ -72,7 +81,9 @@ async def transcribe_audio(
     try:
         validate_audio_content_type(audio_file.content_type)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
     try:
         result = await stt_service.transcribe_bytes_async(contents, language=language)
@@ -98,10 +109,15 @@ async def transcribe_microphone(
 ) -> dict[str, object]:
     """Record microphone input locally and convert it to text in the current environment."""
     if duration_seconds <= 0 or duration_seconds > 300:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duration must be between 1 and 300 seconds.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duration must be between 1 and 300 seconds.",
+        )
 
     try:
-        result = stt_service.record_microphone(duration_seconds=duration_seconds, language=language)
+        result = stt_service.record_microphone(
+            duration_seconds=duration_seconds, language=language
+        )
         return {
             "text": result["text"],
             "language": result.get("language"),
@@ -133,14 +149,21 @@ async def voice_chat(
     5. Background DB persistence (off critical path)
     """
     if current_user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required for voice chat.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required for voice chat.",
+        )
 
     if not audio_file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is required.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is required."
+        )
 
     contents = await audio_file.read()
     if not contents:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is empty.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is empty."
+        )
 
     if len(contents) > MAX_AUDIO_BYTES:
         raise HTTPException(
@@ -151,17 +174,24 @@ async def voice_chat(
     try:
         validate_audio_content_type(audio_file.content_type)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
     t_request_start = time.time()
 
     # ── Step 1: STT (greedy, beam_size=1 — fast) ─────────────────────
     t0_stt = time.time()
     try:
-        stt_result = await stt_service.transcribe_bytes_async(contents, language=language)
+        stt_result = await stt_service.transcribe_bytes_async(
+            contents, language=language
+        )
     except Exception as exc:
         logger.error("Voice chat STT failure: %s", exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Transcription failed: {exc}") from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transcription failed: {exc}",
+        ) from exc
 
     t_stt_end = time.time()
     stt_latency_ms = round((t_stt_end - t0_stt) * 1000, 2)
@@ -174,7 +204,9 @@ async def voice_chat(
             detail="No speech was detected in the supplied audio.",
         )
 
-    logger.info("[Voice] STT done in %.2fs: '%s'", t_stt_end - t0_stt, transcription[:60])
+    logger.info(
+        "[Voice] STT done in %.2fs: '%s'", t_stt_end - t0_stt, transcription[:60]
+    )
 
     # ── Step 2: Conversation (minimal — no heavy history load) ────────
     conversation: Conversation | None = None
@@ -182,13 +214,24 @@ async def voice_chat(
         try:
             parsed_id = UUID(conversation_id)
         except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid conversation_id.") from exc
-        conversation = await _get_owned_conversation(session, current_user.id, parsed_id)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid conversation_id.",
+            ) from exc
+        conversation = await _get_owned_conversation(
+            session, current_user.id, parsed_id
+        )
         if conversation is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found."
+            )
 
     if conversation is None:
-        title = transcription[:40] if len(transcription) <= 40 else transcription[:37] + "..."
+        title = (
+            transcription[:40]
+            if len(transcription) <= 40
+            else transcription[:37] + "..."
+        )
         conversation = Conversation(
             user_id=current_user.id,
             title=title,
@@ -203,7 +246,7 @@ async def voice_chat(
         session=session,
         user_id=current_user.id,
         query_text=transcription,
-        limit=2,          # Voice: only top 2 memories, not 5
+        limit=2,  # Voice: only top 2 memories, not 5
         include_sensitive=False,
     )
 
@@ -222,7 +265,7 @@ async def voice_chat(
         response_text = await ollama_provider.generate(
             prompt=transcription,
             system=system_prompt,
-            num_predict=120,   # ~30s at 4 tok/s — concise spoken answer
+            num_predict=120,  # ~30s at 4 tok/s — concise spoken answer
         )
     except Exception:
         # Fallback to full LLM service router if Ollama fails
@@ -235,19 +278,28 @@ async def voice_chat(
                 provider_name="auto",
                 is_online=True,
             )
-            response_text = await llm.generate(prompt=transcription, system=system_prompt_full)
+            response_text = await llm.generate(
+                prompt=transcription, system=system_prompt_full
+            )
         except RuntimeError as exc:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+            ) from exc
         except Exception as exc:
             logger.error("Voice chat LLM failure: %s", exc)
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"AI response failed: {exc}") from exc
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"AI response failed: {exc}",
+            ) from exc
 
     t_llm_end = time.time()
     llm_latency_ms = round((t_llm_end - t0_llm) * 1000, 2)
     provider = llm.last_provider_used or "ollama"
     model_name = llm.last_model_used or "qwen2.5:3b"
 
-    logger.info("[Voice] LLM done in %.2fs (%d chars)", t_llm_end - t0_llm, len(response_text))
+    logger.info(
+        "[Voice] LLM done in %.2fs (%d chars)", t_llm_end - t0_llm, len(response_text)
+    )
 
     # ── Step 6: TTS Synthesis ─────────────────────────────────────────
     t0_tts = time.time()
@@ -275,24 +327,31 @@ async def voice_chat(
 
     logger.info(
         "[Voice Pipeline] STT: %.2fs | LLM: %.2fs | TTS: %.2fs | Total: %.2fs",
-        (t_stt_end - t0_stt), (t_llm_end - t0_llm), (t_tts_end - t0_tts), (t_tts_end - t_request_start)
+        (t_stt_end - t0_stt),
+        (t_llm_end - t0_llm),
+        (t_tts_end - t0_tts),
+        (t_tts_end - t_request_start),
     )
 
     # ── Step 7: DB persistence OFF critical path (background) ─────────
     async def _persist():
         try:
-            session.add(Message(
-                conversation_id=conversation.id,
-                role="user",
-                content=transcription,
-                model_provider=None,
-            ))
-            session.add(Message(
-                conversation_id=conversation.id,
-                role="assistant",
-                content=response_text,
-                model_provider=provider,
-            ))
+            session.add(
+                Message(
+                    conversation_id=conversation.id,
+                    role="user",
+                    content=transcription,
+                    model_provider=None,
+                )
+            )
+            session.add(
+                Message(
+                    conversation_id=conversation.id,
+                    role="assistant",
+                    content=response_text,
+                    model_provider=provider,
+                )
+            )
             await session.commit()
         except Exception as exc:
             logger.debug("Voice DB persistence failed (non-critical): %s", exc)
@@ -327,7 +386,9 @@ async def synthesize_speech(
 ) -> Response:
     """Synthesize text into speech MP3 bytes directly."""
     if not text.strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Text cannot be empty.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Text cannot be empty."
+        )
 
     if not tts_service.is_configured():
         raise HTTPException(
@@ -340,7 +401,9 @@ async def synthesize_speech(
         return Response(content=audio_bytes, media_type="audio/mpeg")
     except Exception as exc:
         logger.error("Direct synthesis failed: %s", exc)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        ) from exc
 
 
 @router.post("/stream")
@@ -362,14 +425,21 @@ async def voice_stream(
     6. Asynchronous DB save in background.
     """
     if current_user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required for voice streaming.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required for voice streaming.",
+        )
 
     if not audio_file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is required.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is required."
+        )
 
     contents = await audio_file.read()
     if not contents:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is empty.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is empty."
+        )
 
     if len(contents) > MAX_AUDIO_BYTES:
         raise HTTPException(
@@ -380,15 +450,22 @@ async def voice_stream(
     try:
         validate_audio_content_type(audio_file.content_type)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
     t_start = time.time()
     t0_stt = time.time()
     try:
-        stt_result = await stt_service.transcribe_bytes_async(contents, language=language)
+        stt_result = await stt_service.transcribe_bytes_async(
+            contents, language=language
+        )
     except Exception as exc:
         logger.error("Voice stream STT failure: %s", exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Transcription failed: {exc}") from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Transcription failed: {exc}",
+        ) from exc
 
     t_stt_end = time.time()
     transcription = (stt_result.get("text") or "").strip()
@@ -405,12 +482,18 @@ async def voice_stream(
     if conversation_id:
         try:
             parsed_id = UUID(conversation_id)
-            conversation = await _get_owned_conversation(session, current_user.id, parsed_id)
+            conversation = await _get_owned_conversation(
+                session, current_user.id, parsed_id
+            )
         except Exception:
             pass
 
     if conversation is None:
-        title = transcription[:40] if len(transcription) <= 40 else transcription[:37] + "..."
+        title = (
+            transcription[:40]
+            if len(transcription) <= 40
+            else transcription[:37] + "..."
+        )
         conversation = Conversation(
             user_id=current_user.id,
             title=title,
@@ -444,7 +527,9 @@ async def voice_stream(
         t_first_token = None
 
         try:
-            async for token in llm.ollama.stream(prompt=transcription, system=system_prompt, num_predict=120):
+            async for token in llm.ollama.stream(
+                prompt=transcription, system=system_prompt, num_predict=120
+            ):
                 if t_first_token is None:
                     t_first_token = time.time()
                 all_tokens.append(token)
@@ -454,7 +539,7 @@ async def voice_stream(
                 yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
 
                 # Check for sentence end: punctuation followed by whitespace
-                match = re.search(r'([.!?\n])\s+', sentence_buffer)
+                match = re.search(r"([.!?\n])\s+", sentence_buffer)
                 if match:
                     split_pos = match.end()
                     sentence = sentence_buffer[:split_pos].strip()
@@ -464,9 +549,13 @@ async def voice_stream(
                         audio_b64 = None
                         if tts_service.is_configured():
                             try:
-                                audio_bytes = await tts_service.generate_audio(text=sentence, language=detected_lang)
+                                audio_bytes = await tts_service.generate_audio(
+                                    text=sentence, language=detected_lang
+                                )
                                 if audio_bytes:
-                                    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+                                    audio_b64 = base64.b64encode(audio_bytes).decode(
+                                        "utf-8"
+                                    )
                             except Exception as e:
                                 logger.warning("Streaming TTS sentence error: %s", e)
 
@@ -479,7 +568,9 @@ async def voice_stream(
                 audio_b64 = None
                 if tts_service.is_configured():
                     try:
-                        audio_bytes = await tts_service.generate_audio(text=remaining, language=detected_lang)
+                        audio_bytes = await tts_service.generate_audio(
+                            text=remaining, language=detected_lang
+                        )
                         if audio_bytes:
                             audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                     except Exception as e:
@@ -491,7 +582,9 @@ async def voice_stream(
             t_done = time.time()
             total_ms = round((t_done - t_start) * 1000, 1)
             llm_ms = round((t_done - t0_llm) * 1000, 1)
-            ttft_ms = round((t_first_token - t0_llm) * 1000, 1) if t_first_token else 0.0
+            ttft_ms = (
+                round((t_first_token - t0_llm) * 1000, 1) if t_first_token else 0.0
+            )
 
             yield f"data: {json.dumps({'type': 'done', 'text': full_text, 'total_ms': total_ms, 'llm_ms': llm_ms, 'ttft_ms': ttft_ms, 'sentences': sentence_idx})}\n\n"
 
@@ -502,8 +595,22 @@ async def voice_stream(
             full_text = "".join(all_tokens)
             if full_text and conversation:
                 try:
-                    session.add(Message(conversation_id=conversation.id, role="user", content=transcription, model_provider=None))
-                    session.add(Message(conversation_id=conversation.id, role="assistant", content=full_text, model_provider="ollama"))
+                    session.add(
+                        Message(
+                            conversation_id=conversation.id,
+                            role="user",
+                            content=transcription,
+                            model_provider=None,
+                        )
+                    )
+                    session.add(
+                        Message(
+                            conversation_id=conversation.id,
+                            role="assistant",
+                            content=full_text,
+                            model_provider="ollama",
+                        )
+                    )
                     await session.commit()
                 except Exception as exc:
                     logger.debug("Background persist error: %s", exc)
@@ -517,4 +624,3 @@ async def voice_stream(
             "X-Accel-Buffering": "no",
         },
     )
-

@@ -1,12 +1,12 @@
 """Integration tests for Voice system (status, Faster-Whisper real audio transcription, and TTS)."""
+
 import logging
 from pathlib import Path
 
 import pytest
-from httpx import AsyncClient
-
 from app.services.stt import stt_service
 from app.services.tts import tts_service
+from httpx import AsyncClient
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,9 @@ async def test_real_faster_whisper_english_transcription():
     assert "text" in result
     assert len(result["text"]) > 0, "Transcribed text should not be empty"
     assert result["language"] == "en"
-    logger.info("Real English STT Result (len=%d): %s", len(result["text"]), result["text"][:60])
+    logger.info(
+        "Real English STT Result (len=%d): %s", len(result["text"]), result["text"][:60]
+    )
 
 
 @pytest.mark.asyncio
@@ -47,7 +49,11 @@ async def test_real_faster_whisper_tamil_transcription():
     assert "text" in result
     assert len(result["text"]) > 0, "Transcribed text should not be empty"
     # Safely log Tamil text length to prevent Windows console cp1252 print errors
-    logger.info("Real Tamil STT Result (len=%d, lang=%s)", len(result["text"]), result.get("language"))
+    logger.info(
+        "Real Tamil STT Result (len=%d, lang=%s)",
+        len(result["text"]),
+        result.get("language"),
+    )
 
 
 @pytest.mark.asyncio
@@ -59,7 +65,9 @@ async def test_transcribe_audio_upload_endpoint(client: AsyncClient):
         file_bytes = f.read()
 
     files = {"audio_file": ("sample_english_speech.wav", file_bytes, "audio/wav")}
-    res = await client.post("/api/v1/voice/transcribe", files=files, data={"language": "en"})
+    res = await client.post(
+        "/api/v1/voice/transcribe", files=files, data={"language": "en"}
+    )
     assert res.status_code == 200
     data = res.json()
     assert "text" in data

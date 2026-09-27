@@ -1,4 +1,5 @@
 """Schemas for conversation and chat-message persistence."""
+
 from datetime import datetime
 from uuid import UUID
 

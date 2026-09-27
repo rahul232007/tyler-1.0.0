@@ -1,10 +1,9 @@
 """Integration tests for Authentication flow and User Isolation."""
+
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-
-from app.core.security import create_access_token
 
 
 @pytest.mark.asyncio
@@ -63,7 +62,9 @@ async def test_full_auth_lifecycle(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_user_isolation_memories(client: AsyncClient, auth_headers: dict[str, str]):
+async def test_user_isolation_memories(
+    client: AsyncClient, auth_headers: dict[str, str]
+):
     # User 1 creates a memory
     mem_res = await client.post(
         "/api/v1/memories/",
@@ -82,7 +83,11 @@ async def test_user_isolation_memories(client: AsyncClient, auth_headers: dict[s
     user2_email = f"user2_{uuid4().hex[:8]}@jarvis.ai"
     await client.post(
         "/api/v1/auth/register",
-        json={"email": user2_email, "password": "Password123!", "display_name": "User Two"},
+        json={
+            "email": user2_email,
+            "password": "Password123!",
+            "display_name": "User Two",
+        },
     )
     login2 = await client.post(
         "/api/v1/auth/login",
@@ -91,7 +96,9 @@ async def test_user_isolation_memories(client: AsyncClient, auth_headers: dict[s
     user2_headers = {"Authorization": f"Bearer {login2.json()['access_token']}"}
 
     # User 2 tries to access User 1's memory -> 404
-    forbidden_res = await client.get(f"/api/v1/memories/{memory_id}", headers=user2_headers)
+    forbidden_res = await client.get(
+        f"/api/v1/memories/{memory_id}", headers=user2_headers
+    )
     assert forbidden_res.status_code == 404
 
     # User 2's memories list should not contain User 1's memory

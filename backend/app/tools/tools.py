@@ -1,4 +1,5 @@
 """JARVIS Tools — All tool implementations."""
+
 from __future__ import annotations
 
 import ast
@@ -21,18 +22,26 @@ class WebSearchTool(BaseTool):
     name = "web_search"
     description = "Search the web for current information. Args: query (str), max_results (int, optional)."
 
-    async def execute(self, query: str = "", max_results: int = 5, **_: Any) -> ToolResult:
+    async def execute(
+        self, query: str = "", max_results: int = 5, **_: Any
+    ) -> ToolResult:
         if not query.strip():
             return self._err("Query cannot be empty.")
-        from app.services.search_service import web_search, format_search_results_for_context
+        from app.services.search_service import (
+            format_search_results_for_context,
+            web_search,
+        )
+
         results = await web_search(query, max_results=max_results)
         if not results:
             return self._ok({"results": [], "formatted": "No results found."})
         formatted = format_search_results_for_context(results)
-        return self._ok({
-            "results": [r.to_dict() for r in results],
-            "formatted": formatted,
-        })
+        return self._ok(
+            {
+                "results": [r.to_dict() for r in results],
+                "formatted": formatted,
+            }
+        )
 
 
 # ─────────────────────────────────────────────
@@ -40,7 +49,9 @@ class WebSearchTool(BaseTool):
 # ─────────────────────────────────────────────
 class MemorySearchTool(BaseTool):
     name = "memory_search"
-    description = "Search the user's personal memories. Args: query (str), limit (int, optional)."
+    description = (
+        "Search the user's personal memories. Args: query (str), limit (int, optional)."
+    )
 
     def __init__(self, session=None, user_id=None):
         self._session = session
@@ -51,7 +62,11 @@ class MemorySearchTool(BaseTool):
             return self._err("Memory search requires an authenticated session.")
         if not query.strip():
             return self._err("Query cannot be empty.")
-        from app.services.memory_service import get_relevant_memories, format_memories_for_context
+        from app.services.memory_service import (
+            format_memories_for_context,
+            get_relevant_memories,
+        )
+
         memories = await get_relevant_memories(
             self._session, self._user_id, query, limit=limit
         )
@@ -69,13 +84,15 @@ class DateTimeTool(BaseTool):
 
     async def execute(self, **_: Any) -> ToolResult:
         now = datetime.now(timezone.utc)
-        return self._ok({
-            "utc": now.isoformat(),
-            "date": now.strftime("%Y-%m-%d"),
-            "time": now.strftime("%H:%M:%S"),
-            "day_of_week": now.strftime("%A"),
-            "timezone": "UTC",
-        })
+        return self._ok(
+            {
+                "utc": now.isoformat(),
+                "date": now.strftime("%Y-%m-%d"),
+                "time": now.strftime("%H:%M:%S"),
+                "day_of_week": now.strftime("%A"),
+                "timezone": "UTC",
+            }
+        )
 
 
 # ─────────────────────────────────────────────
@@ -94,11 +111,21 @@ _SAFE_OPS = {
 }
 
 _SAFE_NAMES = {
-    "abs": abs, "round": round, "min": min, "max": max,
-    "sqrt": math.sqrt, "log": math.log, "log10": math.log10,
-    "sin": math.sin, "cos": math.cos, "tan": math.tan,
-    "pi": math.pi, "e": math.e, "pow": math.pow,
-    "int": int, "float": float,
+    "abs": abs,
+    "round": round,
+    "min": min,
+    "max": max,
+    "sqrt": math.sqrt,
+    "log": math.log,
+    "log10": math.log10,
+    "sin": math.sin,
+    "cos": math.cos,
+    "tan": math.tan,
+    "pi": math.pi,
+    "e": math.e,
+    "pow": math.pow,
+    "int": int,
+    "float": float,
 }
 
 
@@ -159,7 +186,9 @@ class ConversationSearchTool(BaseTool):
         if not query.strip():
             return self._err("Query cannot be empty.")
         from sqlalchemy import select
-        from app.models import Message, Conversation
+
+        from app.models import Conversation, Message
+
         # Simple ILIKE text search across message content
         stmt = (
             select(Message.content, Conversation.title, Message.created_at)
@@ -196,7 +225,9 @@ class DocumentSearchTool(BaseTool):
         if not query.strip():
             return self._err("Query cannot be empty.")
         from sqlalchemy import select
+
         from app.models import Document
+
         stmt = (
             select(Document)
             .where(
@@ -222,7 +253,9 @@ class DocumentSearchTool(BaseTool):
 # ─────────────────────────────────────────────
 class LearningTool(BaseTool):
     name = "learning_tool"
-    description = "Get the user's current learning topics and progress. No args required."
+    description = (
+        "Get the user's current learning topics and progress. No args required."
+    )
 
     def __init__(self, session=None, user_id=None):
         self._session = session
@@ -232,7 +265,9 @@ class LearningTool(BaseTool):
         if not self._session or not self._user_id:
             return self._err("Learning tool requires an authenticated session.")
         from sqlalchemy import select
-        from app.models import LearningTopic, LearningProgress
+
+        from app.models import LearningTopic
+
         stmt = (
             select(LearningTopic)
             .where(LearningTopic.user_id == self._user_id)

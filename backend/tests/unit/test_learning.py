@@ -1,8 +1,12 @@
 """Unit tests for Learning System (grading, recommendations, schema validation)."""
-import pytest
 
-from app.schemas.learning import MCQOption, PracticeGenerateRequest, QuestionAnswer, TopicCreate
-from app.services.learning import _generate_recommendation, _parse_questions, grade_mcq, grade_open_answer
+import pytest
+from app.services.learning import (
+    _generate_recommendation,
+    _parse_questions,
+    grade_mcq,
+    grade_open_answer,
+)
 
 
 def test_mcq_grading_correct_and_incorrect():

@@ -3,18 +3,23 @@ JARVIS - Document Management API Endpoints
 Handles file upload, text extraction (PDF / TXT / MD), document retrieval,
 and document context integration.
 """
+
 from __future__ import annotations
 
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 
 from app.api.dependencies import CurrentUser, DatabaseSession
 from app.core.config import get_settings
 from app.models import Document
-from app.schemas.document import DocumentDeleteResponse, DocumentDetailRead, DocumentRead
+from app.schemas.document import (
+    DocumentDeleteResponse,
+    DocumentDetailRead,
+    DocumentRead,
+)
 from app.services.document_service import extract_text_from_bytes, validate_document
 
 logger = logging.getLogger(__name__)
@@ -22,7 +27,9 @@ settings = get_settings()
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
-@router.post("/upload", response_model=DocumentDetailRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/upload", response_model=DocumentDetailRead, status_code=status.HTTP_201_CREATED
+)
 async def upload_document(
     file: UploadFile = File(...),
     current_user: CurrentUser = None,
@@ -33,18 +40,24 @@ async def upload_document(
     extract text content, and store it for JARVIS context.
     """
     if not file.filename:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A file is required.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="A file is required."
+        )
 
     data = await file.read()
     try:
         validate_document(file.filename, file.content_type, len(data))
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
     try:
         extracted_text = extract_text_from_bytes(data, file.filename, file.content_type)
     except Exception as exc:
-        logger.error("Failed to extract text from document '%s': %s", file.filename, exc)
+        logger.error(
+            "Failed to extract text from document '%s': %s", file.filename, exc
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Could not extract readable text from document: {exc}",
@@ -90,10 +103,14 @@ async def get_document(
 ) -> Document:
     """Get full document with extracted text."""
     doc = await session.scalar(
-        select(Document).where(Document.id == document_id, Document.user_id == current_user.id)
+        select(Document).where(
+            Document.id == document_id, Document.user_id == current_user.id
+        )
     )
     if doc is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found."
+        )
     return doc
 
 
@@ -105,9 +122,13 @@ async def delete_document(
 ) -> DocumentDeleteResponse:
     """Delete an uploaded document."""
     doc = await session.scalar(
-        select(Document).where(Document.id == document_id, Document.user_id == current_user.id)
+        select(Document).where(
+            Document.id == document_id, Document.user_id == current_user.id
+        )
     )
     if doc is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found."
+        )
     await session.delete(doc)
     return DocumentDeleteResponse(document_id=document_id, deleted=True)

@@ -1,4 +1,5 @@
 """Validated schemas for user-owned personal memory records."""
+
 import json
 import re
 from datetime import datetime
@@ -7,8 +8,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
-MemoryCategory = Literal["preference", "learning", "goal", "project", "context", "other"]
+MemoryCategory = Literal[
+    "preference", "learning", "goal", "project", "context", "other"
+]
 MEMORY_KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 
 
@@ -26,7 +28,9 @@ class MemoryBase(BaseModel):
     def normalize_memory_key(cls, value: str) -> str:
         key = value.strip().lower()
         if not MEMORY_KEY_PATTERN.fullmatch(key):
-            raise ValueError("Memory keys may use lowercase letters, numbers, dots, dashes, and underscores.")
+            raise ValueError(
+                "Memory keys may use lowercase letters, numbers, dots, dashes, and underscores."
+            )
         return key
 
     @field_validator("value")
@@ -76,7 +80,9 @@ class MemoryUpdate(BaseModel):
 
     @field_validator("value")
     @classmethod
-    def validate_memory_value(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+    def validate_memory_value(
+        cls, value: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         if value is None:
             return None
         return MemoryBase.validate_memory_value(value)

@@ -1,4 +1,5 @@
 """Async PostgreSQL engine and FastAPI session dependency."""
+
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -16,11 +17,13 @@ if "sqlite" in settings.database_url:
     engine_kwargs["poolclass"] = NullPool
 else:
     # SQLAlchemy asyncio engine automatically uses AsyncAdaptedQueuePool
-    engine_kwargs.update({
-        "pool_size": 10,
-        "max_overflow": 20,
-        "pool_timeout": 30.0,
-    })
+    engine_kwargs.update(
+        {
+            "pool_size": 10,
+            "max_overflow": 20,
+            "pool_timeout": 30.0,
+        }
+    )
 
 engine = create_async_engine(settings.database_url, **engine_kwargs)
 

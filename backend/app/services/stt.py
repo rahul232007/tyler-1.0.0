@@ -10,6 +10,7 @@ Key improvements over original:
 - Duration and size limits
 - Proper logging
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +20,6 @@ import tempfile
 import time
 import wave
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -72,6 +72,7 @@ class LocalSpeechToText:
         if self._model is None:
             try:
                 from faster_whisper import WhisperModel
+
                 logger.info(
                     "Loading faster-whisper model '%s' on %s...",
                     self._model_size,
@@ -104,15 +105,17 @@ class LocalSpeechToText:
     # ─────────────────────────────────────────────
     # Core synchronous transcription (blocking)
     # ─────────────────────────────────────────────
-    def _transcribe_path_sync(self, path: str, language: str = "auto") -> dict[str, Any]:
+    def _transcribe_path_sync(
+        self, path: str, language: str = "auto"
+    ) -> dict[str, Any]:
         """Blocking transcription — must be run in a thread pool from async context."""
         model = self._get_model()
         options: dict[str, Any] = {
-            "beam_size": 1,                    # Greedy decode — 3x faster on CPU, same quality for short voice
-            "best_of": 1,                      # No beam search candidates
+            "beam_size": 1,  # Greedy decode — 3x faster on CPU, same quality for short voice
+            "best_of": 1,  # No beam search candidates
             "temperature": 0.0,
             "condition_on_previous_text": False,
-            "vad_filter": True,                # Silence filtering for better accuracy
+            "vad_filter": True,  # Silence filtering for better accuracy
             "vad_parameters": {"min_silence_duration_ms": 300},
         }
         if language and language != "auto":
@@ -258,9 +261,7 @@ class LocalSpeechToText:
                 pass
 
     @staticmethod
-    def _write_wav(
-        frames: "np.ndarray", sample_rate: int, channels: int
-    ) -> str:
+    def _write_wav(frames: np.ndarray, sample_rate: int, channels: int) -> str:
         """Write float32 audio frames to a WAV file and return the path."""
         array = np.asarray(frames)
         if array.ndim == 1:
@@ -303,10 +304,10 @@ class SpeechToTextService(LocalSpeechToText):
 stt_service = SpeechToTextService()
 
 __all__ = [
+    "MAX_AUDIO_BYTES",
+    "SUPPORTED_AUDIO_TYPES",
     "LocalSpeechToText",
     "SpeechToTextService",
     "stt_service",
     "validate_audio_content_type",
-    "SUPPORTED_AUDIO_TYPES",
-    "MAX_AUDIO_BYTES",
 ]
