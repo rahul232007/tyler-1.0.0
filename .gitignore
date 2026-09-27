@@ -1,0 +1,70 @@
+# ============================================================
+# JARVIS - .gitignore
+# NEVER commit secrets, models, or personal data to git
+# ============================================================
+
+# --- Environment & Secrets (CRITICAL - never commit) ---
+.env
+*.env
+.env.local
+.env.production
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+venv/
+env/
+.venv/
+*.pyc
+
+# --- Virtual Environment ---
+backend/venv/
+backend/.venv/
+
+# --- Node / Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+npm-debug.log*
+
+# --- Database ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- AI Models (store on D: drive separately) ---
+models/
+*.gguf
+*.bin
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+
+# --- Memory / Personal Data ---
+memory/
+*.json.bak
+
+# --- Logs ---
+logs/
+*.log
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE ---
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
