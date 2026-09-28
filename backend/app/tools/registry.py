@@ -49,11 +49,14 @@ async def execute_tool(name: str, **kwargs: Any) -> ToolResult:
         if not isinstance(result, ToolResult):
             result = ToolResult(success=True, output=result, tool_name=name)
         return result
-    except Exception as exc:
-        logger.warning(
-            "Tool '%s' raised %s: %s", name, type(exc).__name__, str(exc)[:200]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Tool '%s' raised %s", name, type(exc).__name__)
+        return ToolResult(
+            success=False,
+            output=None,
+            error="Tool execution failed.",
+            tool_name=name,
         )
-        return ToolResult(success=False, output=None, error=str(exc), tool_name=name)
 
 
 def get_tools_description() -> str:

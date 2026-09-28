@@ -100,7 +100,7 @@ class LocalSpeechToText:
     async def warmup_async(self) -> None:
         """Pre-load whisper model into memory in thread pool to eliminate first-request cold latency."""
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(_stt_executor, self._get_model)
+        await loop.run_in_executor(_executor, self._get_model)
 
     # ─────────────────────────────────────────────
     # Core synchronous transcription (blocking)

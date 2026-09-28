@@ -31,6 +31,7 @@ from app.models import PersonalMemory
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+ENCRYPTED_VALUE_MARKER = "__jarvis_encrypted_value__"
 
 
 # ─────────────────────────────────────────────
@@ -74,6 +75,37 @@ def decrypt_value(token: str) -> dict[str, Any]:
         raise ValueError(
             "Memory decryption failed — invalid or corrupted token."
         ) from exc
+
+
+def encode_memory_value(
+    value: dict[str, Any], is_sensitive: bool
+) -> tuple[dict[str, Any], str | None]:
+    """Return database-safe value fields, encrypting sensitive values once."""
+    if not is_sensitive:
+        return value, None
+
+    if set(value) == {ENCRYPTED_VALUE_MARKER}:
+        token = value[ENCRYPTED_VALUE_MARKER]
+        if isinstance(token, str):
+            decrypt_value(token)
+            return value, token
+
+    token = encrypt_value(value)
+    return {ENCRYPTED_VALUE_MARKER: token}, token
+
+
+def decode_memory_value(
+    value: dict[str, Any], encrypted_value: str | None = None
+) -> dict[str, Any]:
+    """Decode a sensitive value from current or legacy database representation."""
+    token = encrypted_value
+    if token is None and set(value) == {ENCRYPTED_VALUE_MARKER}:
+        token = value.get(ENCRYPTED_VALUE_MARKER)
+    if token is not None:
+        if not isinstance(token, str):
+            raise ValueError("Memory decryption failed — invalid or corrupted token.")
+        return decrypt_value(token)
+    return value
 
 
 # ─────────────────────────────────────────────
@@ -287,35 +319,46 @@ async def store_extracted_memories(
         if existing:
             # Update value and importance if significance has increased
             if candidate.get("importance", 0.5) >= existing.importance:
-                existing.value = candidate["value"]
+                is_sensitive = candidate.get("is_sensitive", False)
+                stored_value, encrypted_value = encode_memory_value(
+                    candidate["value"], is_sensitive
+                )
+                existing.value = stored_value
+                existing.encrypted_value = encrypted_value
+                existing.is_sensitive = is_sensitive
+                existing.embedding = (
+                    None
+                    if is_sensitive
+                    else {
+                        "vector": compute_embedding(
+                            f"{candidate['memory_key']} {json.dumps(candidate['value'])}"
+                        ),
+                        "model": "tfidf",
+                    }
+                )
                 existing.importance = candidate.get("importance", 0.5)
                 await session.flush()
             continue
 
-        # Compute embedding for the new memory
-        mem_text = f"{candidate['memory_key']} {json.dumps(candidate['value'])}"
-        emb = compute_embedding(mem_text)
-
-        # Encrypt if sensitive
-        encrypted_value = None
-        if candidate.get("is_sensitive"):
-            try:
-                encrypted_value = encrypt_value(candidate["value"])
-            except Exception as exc:
-                logger.warning(
-                    "Could not encrypt sensitive memory: %s", type(exc).__name__
-                )
+        is_sensitive = candidate.get("is_sensitive", False)
+        stored_value, encrypted_value = encode_memory_value(
+            candidate["value"], is_sensitive
+        )
+        embedding = None
+        if not is_sensitive:
+            mem_text = f"{candidate['memory_key']} {json.dumps(candidate['value'])}"
+            embedding = {"vector": compute_embedding(mem_text), "model": "tfidf"}
 
         mem = PersonalMemory(
             user_id=user_id,
             category=candidate["category"],
             memory_key=candidate["memory_key"],
-            value=candidate["value"],
-            is_sensitive=candidate.get("is_sensitive", False),
+            value=stored_value,
+            is_sensitive=is_sensitive,
             source=candidate.get("source", "auto_extraction"),
             importance=candidate.get("importance", 0.5),
             encrypted_value=encrypted_value,
-            embedding={"vector": emb, "model": "tfidf"},
+            embedding=embedding,
         )
         session.add(mem)
         await session.flush()
@@ -324,7 +367,9 @@ async def store_extracted_memories(
     return stored
 
 
-def format_memories_for_context(memories: list[PersonalMemory]) -> list[dict[str, Any]]:
+def format_memories_for_context(
+    memories: list[PersonalMemory], reveal_sensitive: bool = False
+) -> list[dict[str, Any]]:
     """
     Format memories for injection into chat context.
     Never includes encrypted raw values.
@@ -335,7 +380,13 @@ def format_memories_for_context(memories: list[PersonalMemory]) -> list[dict[str
             {
                 "memory_key": mem.memory_key,
                 "category": mem.category,
-                "value": mem.value,  # Already decrypted in-memory value field
+                "value": (
+                    decode_memory_value(mem.value, mem.encrypted_value)
+                    if mem.is_sensitive and reveal_sensitive
+                    else {"redacted": True}
+                    if mem.is_sensitive
+                    else mem.value
+                ),
                 "importance": mem.importance,
             }
         )

@@ -5,6 +5,7 @@ Never hard-code secrets here.
 """
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
@@ -88,6 +89,12 @@ class Settings(BaseSettings):
 
     # --- Logging ---
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    timing_log_path: Path = Field(
+        default_factory=lambda: Path(__file__).resolve().parents[2]
+        / "scratch"
+        / "server_timings.jsonl",
+        alias="JARVIS_TIMING_LOG_PATH",
+    )
 
     # --- CORS ---
     frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")

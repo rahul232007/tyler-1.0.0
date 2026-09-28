@@ -12,10 +12,12 @@ Handles:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import time
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
@@ -35,7 +37,7 @@ from app.services.memory_service import (
     get_relevant_memories,
     store_extracted_memories,
 )
-from app.tools.registry import execute_tool, get_tools_description
+from app.tools.registry import execute_tool, get_tool, get_tools_description
 from app.tools.tools import get_session_tools
 
 logger = logging.getLogger(__name__)
@@ -132,6 +134,73 @@ async def _build_chat_prompt(
 # ─────────────────────────────────────────────
 # Tool Execution Helper
 # ─────────────────────────────────────────────
+def _tool_call_from_response(raw_response: str) -> tuple[str, dict] | None:
+    """Parse the supported JSON tool-call shape without evaluating model output."""
+    tool_match = re.search(
+        r'\{\s*"tool"\s*:\s*"([^"\\]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\s*\}',
+        raw_response,
+    )
+    if not tool_match:
+        tool_match = re.search(
+            r'```(?:json)?\s*(\{.*?\})\s*```', raw_response, re.DOTALL
+        )
+        if tool_match:
+            try:
+                payload = json.loads(tool_match.group(1))
+                if isinstance(payload, dict):
+                    name = payload.get("tool")
+                    args = payload.get("args", {})
+                    if isinstance(name, str) and isinstance(args, dict):
+                        return name, args
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    try:
+        args = json.loads(tool_match.group(2))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(args, dict):
+        return None
+    return tool_match.group(1).strip(), args
+
+
+async def _build_tool_followup(
+    raw_response: str,
+    prompt_text: str,
+) -> tuple[str | None, list[str]]:
+    """Execute a registered tool and construct a safe follow-up prompt."""
+    parsed_call = _tool_call_from_response(raw_response)
+    if parsed_call is None:
+        return None, []
+
+    tool_name, tool_args = parsed_call
+    tool = get_tool(tool_name)
+    tools_used: list[str] = []
+    if tool is None:
+        tool_result = {"error": "The requested tool is not available."}
+    else:
+        logger.info(
+            "LLM requested registered tool %s with %d argument(s)",
+            tool_name,
+            len(tool_args),
+        )
+        result = await execute_tool(tool_name, **tool_args)
+        if result.success:
+            tool_result = result.output
+            tools_used.append(tool_name)
+        else:
+            tool_result = {"error": "The requested tool could not complete."}
+
+    tool_output = json.dumps(tool_result, default=str)
+    followup_prompt = (
+        f"{prompt_text}\n\n[Tool Result]:\n{tool_output}\n\n"
+        "Now provide the final natural language answer to the user based on this result. "
+        "Do not make another tool call."
+    )
+    return followup_prompt, tools_used
+
+
 async def _handle_tool_calling(
     raw_response: str,
     prompt_text: str,
@@ -142,53 +211,68 @@ async def _handle_tool_calling(
     Check if the LLM output requested a tool call (e.g. {"tool": "...", "args": {...}}).
     If so, execute the tool, feed the output back to the LLM, and return final answer.
     """
-    tools_used = []
-    current_response = raw_response
-
-    # Look for tool call JSON patterns
-    tool_match = re.search(
-        r'\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\s*\}',
-        current_response,
+    followup_prompt, tools_used = await _build_tool_followup(
+        raw_response, prompt_text
     )
-    if not tool_match:
-        # Also check for markdown code block json
-        tool_match = re.search(
-            r'```(?:json)?\s*\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\s*\}\s*```',
-            current_response,
-        )
-
-    if tool_match:
-        tool_name = tool_match.group(1).strip()
-        try:
-            tool_args = json.loads(tool_match.group(2))
-        except Exception:
-            tool_args = {}
-
-        logger.info(
-            "LLM triggered tool: %s with args: %s", tool_name, list(tool_args.keys())
-        )
-        result = await execute_tool(tool_name, **tool_args)
-        tools_used.append(tool_name)
-
-        tool_output_str = json.dumps(
-            result.output or {"error": result.error}, default=str
-        )
-        followup_prompt = (
-            f"{prompt_text}\n\n"
-            f"[Tool Result for '{tool_name}']:\n{tool_output_str}\n\n"
-            f"Now provide the final natural language answer to the user based on this tool result."
-        )
+    if followup_prompt is not None:
         try:
             current_response = await llm.generate(
                 prompt=followup_prompt, system=system_prompt
             )
-        except Exception as exc:
-            logger.warning("Followup generation after tool failed: %s", exc)
-            current_response = (
-                f"I retrieved the information ({tool_name}): {tool_output_str}"
-            )
+        except RuntimeError as exc:
+            logger.warning("Tool follow-up generation failed (%s)", type(exc).__name__)
+            current_response = "I could not complete the response after processing the tool request."
+    else:
+        current_response = raw_response
 
     return current_response, tools_used
+
+
+async def _stream_chat_response(
+    llm,
+    prompt_text: str,
+    system_prompt: str,
+    use_tools: bool,
+):
+    """Stream a normal answer or inspect, execute, then stream a tool follow-up."""
+    if not use_tools:
+        async for token in llm.stream(prompt=prompt_text, system=system_prompt):
+            yield token
+        return
+
+    inspection_tokens = [
+        token async for token in llm.stream(prompt=prompt_text, system=system_prompt)
+    ]
+    raw_response = "".join(inspection_tokens)
+    followup_prompt, _ = await _build_tool_followup(raw_response, prompt_text)
+    if followup_prompt is None:
+        for token in inspection_tokens:
+            yield token
+        return
+
+    try:
+        async for token in llm.stream(prompt=followup_prompt, system=system_prompt):
+            yield token
+    except RuntimeError as exc:
+        logger.warning("Tool follow-up streaming failed (%s)", type(exc).__name__)
+        yield "I could not complete the response after processing the tool request."
+
+
+def _write_timing_record(record: dict[str, float | None]) -> None:
+    """Write optional diagnostics without allowing telemetry failures to affect chat."""
+    timing_path = settings.timing_log_path.expanduser()
+    if not timing_path.is_absolute():
+        timing_path = Path(__file__).resolve().parents[3] / timing_path
+    try:
+        timing_path.parent.mkdir(parents=True, exist_ok=True)
+        with timing_path.open("a", encoding="utf-8") as timing_file:
+            timing_file.write(json.dumps(record) + "\n")
+    except OSError as exc:
+        logger.warning(
+            "Could not write chat timing log to %s (%s)",
+            timing_path,
+            type(exc).__name__,
+        )
 
 
 # ─────────────────────────────────────────────
@@ -304,7 +388,6 @@ async def chat(
                 user_msg_text: str,
             ):
                 """Background task: DB commit + memory extraction — NOT on the streaming path."""
-                import asyncio
                 try:
                     from app.db.base import async_session_factory
                     async with async_session_factory() as bg_session:
@@ -329,9 +412,15 @@ async def chat(
                             if extracted:
                                 await store_extracted_memories(bg_session, current_user.id, extracted)
                         except Exception as mem_exc:
-                            logger.debug("BG memory extraction skipped: %s", mem_exc)
+                            logger.debug(
+                                "BG memory extraction skipped (%s)",
+                                type(mem_exc).__name__,
+                            )
                 except Exception as exc:
-                    logger.debug("BG DB persist failed (non-critical): %s", exc)
+                    logger.debug(
+                        "BG DB persist failed (non-critical) (%s)",
+                        type(exc).__name__,
+                    )
 
             async def token_generator():
                 tokens = []
@@ -343,8 +432,8 @@ async def chat(
                     t_ollama_start,
                 )
                 try:
-                    async for token in llm.stream(
-                        prompt=prompt_text, system=system_prompt
+                    async for token in _stream_chat_response(
+                        llm, prompt_text, system_prompt, request.use_tools
                     ):
                         if t_first_token is None:
                             t_first_token = time.time()
@@ -364,22 +453,14 @@ async def chat(
                     if assistant_text and conversation:
                         provider = llm.last_provider_used or "ollama"
 
-                        # Timing log (file-write only, non-blocking)
-                        try:
-                            import json, os as _os
-                            timing_dir = r"d:\project\jarvis model 1\scratch"
-                            _os.makedirs(timing_dir, exist_ok=True)
-                            timing_file = _os.path.join(timing_dir, "server_timings.jsonl")
-                            record = {
+                        _write_timing_record(
+                            {
                                 "fastapi_receive": t_fastapi_receive,
                                 "ollama_start": t_ollama_start,
                                 "first_token": t_first_token,
                                 "final_token": t_final_token,
                             }
-                            with open(timing_file, "a", encoding="utf-8") as f:
-                                f.write(json.dumps(record) + "\n")
-                        except Exception:
-                            pass
+                        )
 
                         # ✅ Fire-and-forget DB + memory — does NOT block streaming
                         asyncio.create_task(_persist_and_extract(
@@ -399,9 +480,12 @@ async def chat(
 
         # Non-streaming response
         raw_response = await llm.generate(prompt=prompt_text, system=system_prompt)
-        final_response, tools_used = await _handle_tool_calling(
-            raw_response, prompt_text, system_prompt, llm
-        )
+        if request.use_tools:
+            final_response, tools_used = await _handle_tool_calling(
+                raw_response, prompt_text, system_prompt, llm
+            )
+        else:
+            final_response, tools_used = raw_response, []
 
         provider = llm.last_provider_used or "unknown"
         model_used = llm.last_model_used
@@ -428,7 +512,10 @@ async def chat(
             if extracted:
                 await store_extracted_memories(session, current_user.id, extracted)
         except Exception as exc:
-            logger.debug("Background memory extraction skipped: %s", exc)
+            logger.debug(
+                "Background memory extraction skipped (%s)",
+                type(exc).__name__,
+            )
 
         return ChatResponse(
             response=final_response,
@@ -444,10 +531,10 @@ async def chat(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
         )
     except Exception as e:
-        logger.error("Chat generation failed: %s", e, exc_info=True)
+        logger.error("Chat generation failed (%s)", type(e).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"LLM error: {e!s}",
+            detail="Chat generation failed.",
         )
 
 

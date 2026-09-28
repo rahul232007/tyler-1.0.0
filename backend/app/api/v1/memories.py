@@ -19,8 +19,8 @@ from app.schemas.memory import (
 from app.services.llm import get_llm_service
 from app.services.memory_service import (
     compute_embedding,
-    decrypt_value,
-    encrypt_value,
+    decode_memory_value,
+    encode_memory_value,
     extract_memories_from_conversation,
     format_memories_for_context,
     get_relevant_memories,
@@ -53,13 +53,15 @@ async def get_owned_memory(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found."
         )
-    # Decrypt value if stored encrypted
-    if memory.is_sensitive and memory.encrypted_value:
-        try:
-            memory.value = decrypt_value(memory.encrypted_value)
-        except Exception:
-            pass
     return memory
+
+
+def _memory_response(memory: PersonalMemory) -> MemoryRead:
+    """Serialize an owned memory without exposing sensitive plaintext or ciphertext."""
+    result = MemoryRead.model_validate(memory)
+    if memory.is_sensitive:
+        result = result.model_copy(update={"value": {"redacted": True}})
+    return result
 
 
 async def ensure_unique_memory_key(
@@ -97,32 +99,30 @@ async def create_memory(
         session=session,
     )
 
-    mem_dict = payload.model_dump()
-    encrypted_val = None
-    if payload.is_sensitive:
-        try:
-            encrypted_val = encrypt_value(payload.value)
-        except Exception:
-            pass
+    stored_value, encrypted_val = encode_memory_value(
+        payload.value, payload.is_sensitive
+    )
 
-    mem_text = f"{payload.memory_key} {json.dumps(payload.value)}"
-    emb_vector = compute_embedding(mem_text)
+    embedding = None
+    if not payload.is_sensitive:
+        mem_text = f"{payload.memory_key} {json.dumps(payload.value)}"
+        embedding = {"vector": compute_embedding(mem_text), "model": "tfidf"}
 
     memory = PersonalMemory(
         user_id=current_user.id,
         category=payload.category,
         memory_key=payload.memory_key,
-        value=payload.value,
+        value=stored_value,
         is_sensitive=payload.is_sensitive,
         source=payload.source,
         importance=0.6,
         encrypted_value=encrypted_val,
-        embedding={"vector": emb_vector, "model": "tfidf"},
+        embedding=embedding,
     )
     session.add(memory)
     await session.flush()
     await session.refresh(memory)
-    return memory
+    return _memory_response(memory)
 
 
 @router.get("/", response_model=list[MemoryRead])
@@ -142,13 +142,7 @@ async def list_memories(
         query = query.where(PersonalMemory.is_sensitive.is_(False))
     query = query.order_by(PersonalMemory.updated_at.desc()).offset(offset).limit(limit)
     result = list(await session.scalars(query))
-    for m in result:
-        if m.is_sensitive and m.encrypted_value:
-            try:
-                m.value = decrypt_value(m.encrypted_value)
-            except Exception:
-                pass
-    return result
+    return [_memory_response(memory) for memory in result]
 
 
 @router.get("/search")
@@ -191,7 +185,18 @@ async def extract_memories(
         stored_count = await store_extracted_memories(
             session, current_user.id, candidates
         )
-    return MemoryExtractResponse(extracted_count=stored_count, memories=candidates)
+    response_memories = [
+        {
+            **candidate,
+            "value": {"redacted": True}
+            if candidate.get("is_sensitive")
+            else candidate["value"],
+        }
+        for candidate in candidates
+    ]
+    return MemoryExtractResponse(
+        extracted_count=stored_count, memories=response_memories
+    )
 
 
 @router.get("/{memory_id}", response_model=MemoryRead)
@@ -199,7 +204,8 @@ async def read_memory(
     memory_id: UUID, current_user: CurrentUser, session: DatabaseSession
 ) -> PersonalMemory:
     """Read one owned memory, including a sensitive one when explicitly requested."""
-    return await get_owned_memory(memory_id, current_user.id, session)
+    memory = await get_owned_memory(memory_id, current_user.id, session)
+    return _memory_response(memory)
 
 
 @router.patch("/{memory_id}", response_model=MemoryRead)
@@ -223,23 +229,28 @@ async def update_memory(
             exclude_id=memory.id,
         )
 
+    current_value = (
+        decode_memory_value(memory.value, memory.encrypted_value)
+        if memory.is_sensitive
+        else memory.value
+    )
+    new_value = updates.pop("value", current_value)
+    new_is_sensitive = updates.pop("is_sensitive", memory.is_sensitive)
     for field_name, value in updates.items():
         setattr(memory, field_name, value)
 
-    # Re-encrypt if sensitive
-    if memory.is_sensitive:
-        try:
-            memory.encrypted_value = encrypt_value(memory.value)
-        except Exception:
-            pass
-
-    # Update embedding
-    mem_text = f"{memory.memory_key} {json.dumps(memory.value)}"
-    memory.embedding = {"vector": compute_embedding(mem_text), "model": "tfidf"}
+    memory.is_sensitive = new_is_sensitive
+    memory.value, memory.encrypted_value = encode_memory_value(
+        new_value, new_is_sensitive
+    )
+    memory.embedding = None
+    if not new_is_sensitive:
+        mem_text = f"{memory.memory_key} {json.dumps(new_value)}"
+        memory.embedding = {"vector": compute_embedding(mem_text), "model": "tfidf"}
 
     await session.flush()
     await session.refresh(memory)
-    return memory
+    return _memory_response(memory)
 
 
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
